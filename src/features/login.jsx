@@ -50,7 +50,7 @@ function Login() {
 
     try {
       const formattedPhone = "+91" + phone.trim();
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/send-otp`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/send-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

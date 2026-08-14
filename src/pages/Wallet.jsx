@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import walletIllustration from "../assets/wallet_illustration.png";
 
-const BACKEND_URL = import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com";
 
 const renderIcon = (type) => {
   switch (type) {

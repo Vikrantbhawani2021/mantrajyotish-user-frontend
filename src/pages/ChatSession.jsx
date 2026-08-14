@@ -88,7 +88,7 @@ export default function ChatSession() {
 
     // Connect to Socket server
     const token = localStorage.getItem("authToken");
-    socketRef.current = io(import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com", {
+    socketRef.current = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
       transports: ["polling", "websocket"],
       auth: {
         token: token
@@ -268,7 +268,7 @@ export default function ChatSession() {
     // Fetch chat history
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/history/${sessionId}`, {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/history/${sessionId}`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }
@@ -332,7 +332,7 @@ export default function ChatSession() {
         if (!userId) return;
 
         const token = localStorage.getItem("authToken");
-        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/sessions?userId=${userId}`, {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/sessions?userId=${userId}`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }
@@ -392,7 +392,7 @@ export default function ChatSession() {
         messageType: "text"
       });
     } else {
-      fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/send`, {
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -428,7 +428,7 @@ export default function ChatSession() {
         messageType: "text"
       });
     } else {
-      fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/send`, {
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -480,7 +480,7 @@ export default function ChatSession() {
       formDataObj.append("image", file);
 
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/upload/image`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/upload/image`, {
         method: "POST",
         headers: {
           ...(token ? { "Authorization": `Bearer ${token}` } : {})
@@ -519,7 +519,7 @@ export default function ChatSession() {
   const handleEndChat = async () => {
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/end`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/end`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -565,7 +565,7 @@ export default function ChatSession() {
     setSubmittingRate(true);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/rate`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/rate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

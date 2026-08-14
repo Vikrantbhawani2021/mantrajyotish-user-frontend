@@ -65,7 +65,7 @@ export default function Chat() {
   useEffect(() => {
     const fetchOnlineAstrologers = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all?online=true`);
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all?online=true`);
         const resData = await response.json();
         if (response.ok && resData.success && resData.data && resData.data.length > 0) {
           const formatted = resData.data.map(astro => ({
@@ -127,7 +127,7 @@ export default function Chat() {
         token: token ? `${token.substring(0, 15)}...` : "missing"
       });
 
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/initiate`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/initiate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -107,7 +107,7 @@ function Otp() {
       }
 
       // Call backend verify OTP API (Live Mode)
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/verify-otp`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/verify-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -135,7 +135,7 @@ function Otp() {
             const signature = "dummy_signature";
             const jwt = `${header}.${payload}.${signature}`;
 
-            const loginResponse = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/login`, {
+            const loginResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/login`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -213,7 +213,7 @@ function Otp() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/send-otp`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/send-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

@@ -3,7 +3,7 @@ import { CheckCircle, Star, Phone, Video, Wallet, X, AlertTriangle } from "lucid
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const BACKEND_URL = import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com";
 
 // Inline Recharge Prompt Modal
 function RechargeModal({ astrologerName, rate, currentBalance, onClose, onRecharge }) {

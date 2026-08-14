@@ -70,7 +70,7 @@ function Call() {
   useEffect(() => {
     const fetchOnlineAstrologers = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all?online=true`);
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all?online=true`);
         const resData = await response.json();
         console.log("Fetch Online Astrologers API Response:", resData);
         

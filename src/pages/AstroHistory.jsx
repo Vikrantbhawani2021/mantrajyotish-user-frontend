@@ -67,8 +67,8 @@ export default function AstroHistory() {
 
         // Fetch both chat sessions and video/audio sessions in parallel
         const [chatRes, callRes] = await Promise.allSettled([
-          fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/sessions?userId=${userId}`, { headers }),
-          fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/history?userId=${userId}&role=user`, { headers })
+          fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/sessions?userId=${userId}`, { headers }),
+          fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/history?userId=${userId}&role=user`, { headers })
         ]);
 
         let formattedChats = [];

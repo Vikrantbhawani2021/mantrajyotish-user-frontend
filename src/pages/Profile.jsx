@@ -27,7 +27,7 @@ function Profile() {
 
     const token = localStorage.getItem("authToken");
     if (token) {
-      fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
         headers: {
           Authorization: `Bearer ${token}`
         }

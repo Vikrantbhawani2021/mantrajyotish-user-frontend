@@ -139,7 +139,7 @@ export default function CallSession() {
     }
 
     const token = localStorage.getItem("authToken");
-    socketRef.current = io(import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com", {
+    socketRef.current = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
       transports: ["polling", "websocket"],
       auth: { token }
     });
@@ -426,7 +426,7 @@ export default function CallSession() {
       socketRef.current?.emit("end_call_session", { sessionId });
 
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/end/${sessionId}`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/end/${sessionId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -471,7 +471,7 @@ export default function CallSession() {
     setSubmittingRate(true);
     try {
       const token = localStorage.getItem("authToken");
-      let response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/rate`, {
+      let response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/rate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -485,7 +485,7 @@ export default function CallSession() {
       });
 
       if (!response.ok) {
-        response = await fetch(`${import.meta.env.VITE_SOCKET_URL || "https://kalpjoytish-backend.onrender.com"}/api/call/rate`, {
+        response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/call/rate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

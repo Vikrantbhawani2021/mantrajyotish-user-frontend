@@ -220,6 +220,15 @@ export default function ChatSession() {
 
     socket.on("receive_message", handleReceiveMsgUser);
 
+    socket.on("chat_accepted", (data) => {
+      console.log("💬 Chat request accepted by astrologer:", data);
+      setSessionStatus("ACTIVE");
+    });
+
+    socket.on("chat_request_created", (data) => {
+      console.log("💬 Chat request created:", data);
+    });
+
     // Listen for active state / tick / acceptance events
     socket.on("session_active", () => {
       setSessionStatus("ACTIVE");
@@ -518,6 +527,10 @@ export default function ChatSession() {
 
   const handleEndChat = async () => {
     try {
+      if (socketRef.current) {
+        socketRef.current.emit("end_chat_session", { sessionId });
+      }
+
       const token = localStorage.getItem("authToken");
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/end`, {
         method: "POST",

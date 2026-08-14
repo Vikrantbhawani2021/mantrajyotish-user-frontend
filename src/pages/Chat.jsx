@@ -4,49 +4,6 @@ import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import { useAuth } from "../context/AuthContext";
 
-const mockAstrologers = [
-  {
-    id: "65b839cd49b29e00192e01a4",
-    name: "Vikram",
-    skill: "Kundli, Vastu, Marriage",
-    exp: "8 Years",
-    rating: "4.9",
-    price: "₹15/min",
-    priceRaw: 15,
-    image: "https://i.pravatar.cc/200?img=33",
-  },
-  {
-    id: "65b839cd49b29e00192e01a5",
-    name: "Sumit",
-    skill: "Love, Career, Marriage",
-    exp: "5 Years",
-    rating: "4.9",
-    price: "₹20/min",
-    priceRaw: 20,
-    image: "https://i.pravatar.cc/200?img=12",
-  },
-  {
-    id: "65b839cd49b29e00192e01a6",
-    name: "Rahul",
-    skill: "Vedic Astrology, Financial",
-    exp: "3 Years",
-    rating: "4.8",
-    price: "₹18/min",
-    priceRaw: 18,
-    image: "https://i.pravatar.cc/200?img=68",
-  },
-  {
-    id: "65b839cd49b29e00192e01a7",
-    name: "Neha",
-    skill: "Numerology, Love, Career",
-    exp: "6 Years",
-    rating: "5.0",
-    price: "₹25/min",
-    priceRaw: 25,
-    image: "https://i.pravatar.cc/200?img=47",
-  },
-];
-
 export default function Chat() {
   const navigate = useNavigate();
   const { isLoggedIn, triggerLoginModal } = useAuth();
@@ -65,26 +22,34 @@ export default function Chat() {
   useEffect(() => {
     const fetchOnlineAstrologers = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all?online=true`);
+        const token = localStorage.getItem("authToken");
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all`, {
+          headers: {
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          }
+        });
         const resData = await response.json();
-        if (response.ok && resData.success && resData.data && resData.data.length > 0) {
-          const formatted = resData.data.map(astro => ({
-            id: astro._id,
+        const list = resData.data || (Array.isArray(resData) ? resData : []);
+        if (response.ok && resData.success && list && list.length > 0) {
+          const formatted = list.map(astro => ({
+            id: astro._id || astro.id,
             name: astro.name || "Astrologer",
-            skill: (astro.specialization && astro.specialization.join(", ")) || "Kundli, Vastu, Marriage",
-            exp: astro.experience || "5 Years",
-            rating: astro.rating || "4.8",
+            isOnline: astro.isOnline ?? true,
+            isAvailable: astro.isAvailable ?? true,
+            skill: (astro.specialization && Array.isArray(astro.specialization) ? astro.specialization.join(", ") : astro.specialization) || "Kundli, Vastu, Marriage",
+            exp: astro.experience ? `${astro.experience} Years` : "5 Years",
+            rating: astro.rating ? String(astro.rating) : "4.8",
             price: astro.consultationFee ? `₹${astro.consultationFee}/min` : "₹15/min",
             priceRaw: astro.consultationFee || 15,
             image: astro.profileImage || `https://i.pravatar.cc/200?img=${Math.floor(Math.random() * 70) + 1}`,
           }));
           setAstrologers(formatted);
         } else {
-          setAstrologers(mockAstrologers);
+          setAstrologers([]);
         }
       } catch (error) {
         console.error("Fetch astrologers error:", error);
-        setAstrologers(mockAstrologers);
+        setAstrologers([]);
       } finally {
         setLoading(false);
       }
@@ -126,6 +91,23 @@ export default function Chat() {
         name: userName,
         token: token ? `${token.substring(0, 15)}...` : "missing"
       });
+
+      // Dual dispatch: socket emission for real-time notification
+      try {
+        const { io } = await import("socket.io-client");
+        const socket = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
+          transports: ["polling", "websocket"]
+        });
+        socket.on("connect", () => {
+          socket.emit("register_user", { userId });
+          socket.emit("request_chat", {
+            userId: userId,
+            astrologerId: item.id
+          });
+        });
+      } catch (sErr) {
+        console.warn("Direct socket chat request error:", sErr);
+      }
 
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/initiate`, {
         method: "POST",
@@ -236,7 +218,7 @@ export default function Chat() {
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                      <span className={`absolute bottom-0 right-0 w-3 h-3 ${item.isOnline ? "bg-green-500" : "bg-gray-400"} border-2 border-white rounded-full`}></span>
                     </div>
 
                     {/* Details */}
@@ -245,8 +227,10 @@ export default function Chat() {
                         <h2 className="font-bold text-[#1d2340] text-base leading-tight truncate">
                           {item.name}
                         </h2>
-                        <span className="bg-[#FFF2EC] text-[#FF6F3D] text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider">
-                          Online
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+                          item.isOnline ? "bg-[#FFF2EC] text-[#FF6F3D]" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {item.isOnline ? "Online" : "Offline"}
                         </span>
                         <button
                           onClick={(e) => {

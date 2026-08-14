@@ -115,7 +115,7 @@ function AstrologerCard({ item }) {
     const userId = userObj._id || userObj.id || userObj.userId || localStorage.getItem("phone") || "";
 
     // Quick check from localStorage first
-    const localBalance = parseFloat(localStorage.getItem("wallet_balance") || "500.00");
+    const localBalance = parseFloat(localStorage.getItem("wallet_balance") || "0.00");
 
     if (userId || token) {
       try {
@@ -127,14 +127,14 @@ function AstrologerCard({ item }) {
         const res = await fetch(url, { headers });
         const resData = await res.json();
         if (resData.success && resData.data !== undefined) {
-          const bal = Math.max(resData.data.walletBalance ?? resData.data.balance ?? 500, localBalance, 500);
+          const bal = resData.data.walletBalance ?? resData.data.balance ?? 0;
           localStorage.setItem("wallet_balance", bal.toFixed(2));
           return bal;
         }
       } catch {}
     }
 
-    const effective = Math.max(localBalance, 500);
+    const effective = localBalance;
     localStorage.setItem("wallet_balance", effective.toFixed(2));
     return effective;
   };
@@ -150,11 +150,12 @@ function AstrologerCard({ item }) {
     setLoadingCall(type);
 
     try {
-      // Step 1: Ensure wallet balance is at least ₹500 for testing/demo call
+      // Step 1: Ensure user has sufficient balance to connect call
       let currentBalance = await getWalletBalance();
       if (currentBalance < priceCleaned) {
-        currentBalance = Math.max(currentBalance, 500);
-        localStorage.setItem("wallet_balance", currentBalance.toFixed(2));
+        setRechargeModal({ rate: priceCleaned, currentBalance });
+        setLoadingCall(null);
+        return;
       }
 
       // Step 2: Proceed with call request
@@ -172,6 +173,7 @@ function AstrologerCard({ item }) {
         const { io } = await import("socket.io-client");
         const directSocket = io(BACKEND_URL, { transports: ["polling", "websocket"] });
         directSocket.on("connect", () => {
+          directSocket.emit("register_user", { userId: userId });
           directSocket.emit("request_call", {
             userId: userId,
             astrologerId: astroId,
@@ -286,6 +288,11 @@ function AstrologerCard({ item }) {
               <h2 className="font-bold text-[#1d2340] text-base leading-tight truncate">
                 {data.name}
               </h2>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+                data.isOnline !== false ? "bg-[#FFF2EC] text-[#FF6F3D]" : "bg-gray-100 text-gray-500"
+              }`}>
+                {data.isOnline !== false ? "Online" : "Offline"}
+              </span>
               <CheckCircle
                 size={14}
                 className="text-[#2EA248] fill-[#EBF7EE] flex-shrink-0"

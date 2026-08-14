@@ -44,7 +44,7 @@ export default function Deposit() {
 
   const [balance, setBalance] = useState(() => {
     const saved = localStorage.getItem("wallet_balance");
-    return saved ? Math.max(parseFloat(saved), 500) : 500;
+    return saved ? parseFloat(saved) : 0;
   });
   const [inputAmount, setInputAmount] = useState("500");
   const [selectedMethod, setSelectedMethod] = useState("upi");

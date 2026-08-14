@@ -11,6 +11,9 @@ import {
   Camera,
   Mail,
   Phone,
+  CheckCircle2,
+  AlertCircle,
+  X,
 } from "lucide-react";
 import { FiArrowLeft } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -92,6 +95,31 @@ export default function EditProfile() {
   });
 
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Custom Popup Modal State
+  const [popup, setPopup] = useState({
+    show: false,
+    title: "",
+    message: "",
+    type: "success",
+    onConfirm: null
+  });
+
+  const showPopup = (title, message, type = "success", onConfirm = null) => {
+    setPopup({
+      show: true,
+      title,
+      message,
+      type,
+      onConfirm
+    });
+  };
+
+  const closePopup = () => {
+    const callback = popup.onConfirm;
+    setPopup({ show: false, title: "", message: "", type: "success", onConfirm: null });
+    if (callback) callback();
+  };
 
   // Fetch current user details on mount
   useEffect(() => {
@@ -256,7 +284,7 @@ export default function EditProfile() {
   const handleContinue = async () => {
     const validationError = validateProfileForm(formData, false);
     if (validationError) {
-      alert(validationError);
+      showPopup("Incomplete Details", validationError, "error");
       return;
     }
     
@@ -310,14 +338,18 @@ export default function EditProfile() {
           saveUser(updatedUser);
         }
         
-        alert("Profile completed successfully!");
-        navigate(location.state?.from || "/home");
+        showPopup(
+          "Profile Completed!",
+          "Your profile has been saved successfully.",
+          "success",
+          () => navigate(location.state?.from || "/home")
+        );
       } else {
-        alert(data.message || `Failed to save profile: ${response.statusText}`);
+        showPopup("Error", data.message || `Failed to save profile: ${response.statusText}`, "error");
       }
     } catch (err) {
       console.error("Profile Save Error:", err);
-      alert(`Profile completion failed: ${err.message}`);
+      showPopup("Error", `Profile completion failed: ${err.message}`, "error");
     } finally {
       setIsUpdating(false);
     }
@@ -326,7 +358,7 @@ export default function EditProfile() {
   const handleSingleSave = async () => {
     const validationError = validateProfileForm(formData, true);
     if (validationError) {
-      alert(validationError);
+      showPopup("Incomplete Details", validationError, "error");
       return;
     }
 
@@ -372,14 +404,18 @@ export default function EditProfile() {
           const updatedUser = data.data.user || data.data;
           saveUser(updatedUser);
         }
-        alert("Profile saved successfully!");
-        navigate("/profile");
+        showPopup(
+          "Profile Saved!",
+          "Your profile details have been saved successfully.",
+          "success",
+          () => navigate("/profile")
+        );
       } else {
-        alert(data.message || `Failed to save profile: ${response.statusText}`);
+        showPopup("Error", data.message || `Failed to save profile: ${response.statusText}`, "error");
       }
     } catch (err) {
       console.error("Profile Save Error:", err);
-      alert(`Profile update failed: ${err.message}`);
+      showPopup("Error", `Profile update failed: ${err.message}`, "error");
     } finally {
       setIsUpdating(false);
     }
@@ -903,6 +939,55 @@ export default function EditProfile() {
 
         {/* Bottom Navigation */}
         <Bottomnav />
+
+        {/* Cool Custom Popup Modal */}
+        {popup.show && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
+            <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl relative border border-orange-100 flex flex-col items-center text-center transform transition-all duration-300 scale-100">
+              <button
+                onClick={closePopup}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Icon Header */}
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+                popup.type === "success" 
+                  ? "bg-gradient-to-tr from-emerald-100 to-green-50 text-emerald-600 shadow-md shadow-emerald-100" 
+                  : "bg-gradient-to-tr from-rose-100 to-red-50 text-rose-600 shadow-md shadow-rose-100"
+              }`}>
+                {popup.type === "success" ? (
+                  <CheckCircle2 className="w-9 h-9" />
+                ) : (
+                  <AlertCircle className="w-9 h-9" />
+                )}
+              </div>
+
+              {/* Title */}
+              <h3 className="text-xl font-bold text-gray-900 mb-1">
+                {popup.title}
+              </h3>
+
+              {/* Message */}
+              <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+                {popup.message}
+              </p>
+
+              {/* Action Button */}
+              <button
+                onClick={closePopup}
+                className={`w-full py-3.5 px-6 rounded-2xl font-semibold text-white shadow-lg transition-all transform active:scale-95 cursor-pointer ${
+                  popup.type === "success"
+                    ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-orange-200"
+                    : "bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 shadow-red-200"
+                }`}
+              >
+                {popup.type === "success" ? "Continue" : "Got It"}
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

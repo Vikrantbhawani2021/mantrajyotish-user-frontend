@@ -5,64 +5,6 @@ import CategoryTabs from "../component/CategoryTabs";
 import AstrologerCard from "../component/AstrologerCard";
 import Bottomnav from "../component/Bottomnav";
 
-const defaultAstrologers = [
-  {
-    id: 1,
-    name: "Astro Sumit",
-    skills: "Love, Career, Marriage",
-    experience: "5 Years",
-    rating: "4.9",
-    price: "₹30/min",
-    priceRaw: 30,
-    image: "https://i.pravatar.cc/200?img=12",
-    tag: "Top Rated"
-  },
-  {
-    id: 2,
-    name: "Astro Rakesh",
-    skills: "Kundli, Vastu, Marriage",
-    experience: "8 Years",
-    rating: "4.8",
-    price: "₹25/min",
-    priceRaw: 25,
-    image: "https://i.pravatar.cc/200?img=33",
-    tag: "Trending"
-  },
-  {
-    id: 3,
-    name: "Astro Pooja",
-    skills: "Numerology, Love, Career",
-    experience: "6 Years",
-    rating: "4.9",
-    price: "₹35/min",
-    priceRaw: 35,
-    image: "https://i.pravatar.cc/200?img=47",
-    tag: "Popular"
-  },
-  {
-    id: 4,
-    name: "Astro Amit",
-    skills: "Vedic Astrology, Financial",
-    experience: "10 Years",
-    rating: "5.0",
-    price: "₹40/min",
-    priceRaw: 40,
-    image: "https://i.pravatar.cc/200?img=68",
-    tag: "Top Rated"
-  },
-  {
-    id: 5,
-    name: "Astro Sneha",
-    skills: "Palmistry, Relationship",
-    experience: "4 Years",
-    rating: "4.7",
-    price: "₹20/min",
-    priceRaw: 20,
-    image: "https://i.pravatar.cc/200?img=49",
-    tag: "New"
-  }
-];
-
 function Call() {
   const [astrologers, setAstrologers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -70,19 +12,26 @@ function Call() {
   useEffect(() => {
     const fetchOnlineAstrologers = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all?online=true`);
+        const token = localStorage.getItem("authToken");
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all`, {
+          headers: {
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          }
+        });
         const resData = await response.json();
-        console.log("Fetch Online Astrologers API Response:", resData);
+        console.log("Fetch Astrologers API Response:", resData);
         
-        const list = resData.data || resData.astrologers || resData.online || (Array.isArray(resData) ? resData : []);
+        const list = resData.data || (Array.isArray(resData) ? resData : []);
         
-        if (response.ok && list && list.length > 0) {
+        if (response.ok && resData.success && list && list.length > 0) {
           const formatted = list.map(astro => ({
             id: astro._id || astro.id,
             name: astro.name || "Astrologer",
-            skills: (astro.specialization && astro.specialization.join(", ")) || "Kundli, Vastu, Marriage",
-            experience: astro.experience || "5 Years",
-            rating: astro.rating || "4.8",
+            isOnline: astro.isOnline ?? true,
+            isAvailable: astro.isAvailable ?? true,
+            skills: (astro.specialization && Array.isArray(astro.specialization) ? astro.specialization.join(", ") : astro.specialization) || "Kundli, Vastu, Marriage",
+            experience: astro.experience ? `${astro.experience} Years` : "5 Years",
+            rating: astro.rating ? String(astro.rating) : "4.8",
             price: astro.consultationFee ? `₹${astro.consultationFee}/min` : "₹15/min",
             priceRaw: astro.consultationFee || 15,
             image: astro.profileImage || `https://i.pravatar.cc/200?img=${Math.floor(Math.random() * 70) + 1}`,
@@ -90,11 +39,11 @@ function Call() {
           }));
           setAstrologers(formatted);
         } else {
-          setAstrologers(defaultAstrologers);
+          setAstrologers([]);
         }
       } catch (error) {
         console.error("Fetch astrologers error in call page:", error);
-        setAstrologers(defaultAstrologers);
+        setAstrologers([]);
       } finally {
         setLoading(false);
       }

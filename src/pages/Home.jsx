@@ -119,7 +119,7 @@ function Home() {
             <Banner />
           </div>
 
-          <div className="px-5 mt-6">
+          <div className="px-4 mt-5">
             <ServiceGrid />
           </div>
 

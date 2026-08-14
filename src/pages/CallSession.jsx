@@ -26,7 +26,7 @@ export default function CallSession() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [remainingBalance, setRemainingBalance] = useState(() => {
     const saved = localStorage.getItem("wallet_balance");
-    return saved ? Math.max(parseFloat(saved), 500) : 500;
+    return saved ? parseFloat(saved) : 0;
   });
   const [showWarning, setShowWarning] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -87,7 +87,7 @@ export default function CallSession() {
         console.error("Error playing remote video track in useEffect:", err);
       }
     }
-  }, [remoteUser, sessionStatus]);
+  }, [remoteUser, sessionStatus, hasRemoteVideo, peerVideoMuted]);
 
   // Play local video track when localVideoTrackRef or container ref becomes available
   useEffect(() => {
@@ -125,6 +125,28 @@ export default function CallSession() {
     }
   };
 
+  const fetchRealBalance = async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      
+      const url = userId
+        ? `${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/wallet/balance?userId=${userId}`
+        : `${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/wallet/balance`;
+        
+      const res = await fetch(url, { headers });
+      const resData = await res.json();
+      if (resData.success && resData.data !== undefined) {
+        const bal = resData.data.walletBalance ?? resData.data.balance ?? 0;
+        setRemainingBalance(bal);
+        localStorage.setItem("wallet_balance", bal.toFixed(2));
+      }
+    } catch (err) {
+      console.error("Error fetching real balance in CallSession:", err);
+    }
+  };
+
   // Socket & Signaling connection
   useEffect(() => {
     if (!isLoggedIn) {
@@ -137,6 +159,8 @@ export default function CallSession() {
       navigate("/call");
       return;
     }
+
+    fetchRealBalance();
 
     const token = localStorage.getItem("authToken");
     socketRef.current = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
@@ -180,7 +204,7 @@ export default function CallSession() {
     socket.on("timer_tick", (data) => {
       if (data) {
         if (data.remainingBalance !== undefined) {
-          const safeBal = Math.max(Number(data.remainingBalance) || 0, 500);
+          const safeBal = Number(data.remainingBalance) || 0;
           setRemainingBalance(safeBal);
           localStorage.setItem("wallet_balance", safeBal.toFixed(2));
         }
@@ -306,6 +330,7 @@ export default function CallSession() {
         console.log("Subscribed to astrologer track:", user.uid, mediaType);
         
         if (mediaType === "video") {
+          setRemoteUser(user);
           setHasRemoteVideo(true);
           if (remoteVideoRef.current) {
             user.videoTrack.play(remoteVideoRef.current);
@@ -319,12 +344,14 @@ export default function CallSession() {
       client.on("user-unpublished", (user, mediaType) => {
         if (mediaType === "video") {
           setHasRemoteVideo(false);
+          setRemoteUser(null);
         }
       });
 
       client.on("user-left", (user) => {
         console.log("Astrologer left the channel:", user.uid);
         setHasRemoteVideo(false);
+        setRemoteUser(null);
         handleEndCall();
       });
 
@@ -557,164 +584,175 @@ export default function CallSession() {
     const isVideo = callType === "VIDEO";
 
     return (
-      <div className="min-h-screen bg-[#111827] flex justify-center text-white relative">
-        <div className="w-full max-w-[430px] flex flex-col justify-between items-center relative overflow-hidden">
-          
-          {/* Low Balance Warning Banner */}
-          {showWarning && (
-            <div className="absolute top-4 left-4 right-4 z-50 bg-yellow-500 text-black px-4 py-3 rounded-2xl flex items-center justify-between gap-2 shadow-lg">
-              <div className="flex items-center gap-2 flex-1">
-                <AlertTriangle size={18} className="flex-shrink-0" />
-                <p className="text-xs font-bold leading-tight">
-                  Low balance! {remainingBalance !== null ? `₹${remainingBalance.toFixed(2)} left.` : ""} Kindly recharge to enjoy more.
-                </p>
-              </div>
-              <button
-                onClick={() => navigate("/deposit")}
-                className="flex-shrink-0 bg-black/20 hover:bg-black/30 text-black text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
-              >
-                Recharge
-              </button>
+      <div className="h-screen h-[100dvh] w-full max-w-[430px] bg-slate-950 flex flex-col justify-between items-center relative overflow-hidden text-white mx-auto shadow-2xl">
+        
+        {/* Low Balance Warning Banner */}
+        {showWarning && (
+          <div className="absolute top-4 left-4 right-4 z-50 bg-amber-500 text-black px-4 py-3 rounded-2xl flex items-center justify-between gap-2 shadow-xl border border-amber-300">
+            <div className="flex items-center gap-2 flex-1">
+              <AlertTriangle size={18} className="flex-shrink-0 text-black" />
+              <p className="text-xs font-bold leading-tight">
+                Low balance! {remainingBalance !== null ? `₹${remainingBalance.toFixed(2)} left.` : ""} Kindly recharge to enjoy more.
+              </p>
             </div>
-          )}
+            <button
+              onClick={() => navigate("/deposit")}
+              className="flex-shrink-0 bg-black/20 hover:bg-black/30 text-black text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+            >
+              Recharge
+            </button>
+          </div>
+        )}
 
-          {/* Time & Cost indicator overlay */}
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex items-center gap-3">
-            <Clock size={14} className="text-orange-400" />
-            <span className="font-mono text-sm tracking-wider">{formatTime(elapsedSeconds)}</span>
-            <span className="text-white/40 text-xs">|</span>
+        {/* Top Header Overlay Pill */}
+        <div className="absolute top-5 left-0 right-0 z-30 flex flex-col items-center px-4 pointer-events-none">
+          <div className="pointer-events-auto bg-slate-900/85 backdrop-blur-xl px-4 py-2 rounded-full border border-white/15 flex items-center gap-3 shadow-2xl">
+            <Clock size={14} className="text-orange-400 animate-pulse" />
+            <span className="font-mono text-sm font-bold text-white tracking-wider">{formatTime(elapsedSeconds)}</span>
+            <span className="text-white/30 text-xs">|</span>
             <span className="text-xs font-bold text-orange-400">₹{ratePerMinute}/min</span>
             {remainingBalance !== null && (
               <>
-                <span className="text-white/40 text-xs">|</span>
-                <span className={`text-xs font-bold ${remainingBalance < ratePerMinute * 2 ? "text-red-400" : "text-green-400"}`}>
+                <span className="text-white/30 text-xs">|</span>
+                <span className={`text-xs font-extrabold ${remainingBalance < ratePerMinute * 2 ? "text-rose-400" : "text-emerald-400"}`}>
                   Bal: ₹{remainingBalance.toFixed(0)}
                 </span>
               </>
             )}
           </div>
 
-          {/* Peer muted indicators overlay */}
+          {/* Peer muted status badges */}
           {(peerAudioMuted || peerVideoMuted) && (
-            <div className="absolute top-20 left-4 z-40 flex flex-col gap-2">
+            <div className="pointer-events-auto flex items-center gap-2 mt-3">
               {peerAudioMuted && (
-                <div className="bg-red-500/80 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-red-500/20 flex items-center gap-1.5 text-xs font-bold">
-                  <MicOff size={12} />
+                <div className="bg-rose-500/80 backdrop-blur-md px-3 py-1 rounded-full border border-rose-500/30 flex items-center gap-1.5 text-[11px] font-bold text-white shadow-md">
+                  <MicOff size={11} />
                   <span>Astro Muted</span>
                 </div>
               )}
               {peerVideoMuted && isVideo && (
-                <div className="bg-red-500/80 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-red-500/20 flex items-center gap-1.5 text-xs font-bold">
-                  <VideoOff size={12} />
-                  <span>Astro Video Off</span>
+                <div className="bg-rose-500/80 backdrop-blur-md px-3 py-1 rounded-full border border-rose-500/30 flex items-center gap-1.5 text-[11px] font-bold text-white shadow-md">
+                  <VideoOff size={11} />
+                  <span>Camera Off</span>
                 </div>
               )}
             </div>
           )}
+        </div>
 
-          {/* Video Streams Container */}
-          {isVideo ? (
-            <div className="absolute inset-0 w-full h-full bg-black z-0">
-              
-              {/* Fullscreen Remote Astrologer Video */}
-              <div 
-                ref={remoteVideoRef} 
-                className="w-full h-full object-cover flex items-center justify-center relative"
-              >
-                {(!hasRemoteVideo || peerVideoMuted) ? (
-                  <div className="absolute inset-0 flex flex-col justify-center items-center bg-[#1F2937] z-10">
+        {/* Full View Area */}
+        {isVideo ? (
+          <div className="absolute inset-0 w-full h-full bg-slate-950 z-0 overflow-hidden">
+            
+            {/* Fullscreen Remote Astrologer Video Stream */}
+            <div 
+              ref={remoteVideoRef} 
+              className="w-full h-full relative overflow-hidden flex items-center justify-center [&>video]:!object-cover [&>video]:!w-full [&>video]:!h-full [&>div]:!h-full [&>div]:!w-full"
+            >
+              {(!hasRemoteVideo || peerVideoMuted) && (
+                <div className="absolute inset-0 flex flex-col justify-center items-center bg-slate-900 z-10 text-center px-4">
+                  <div className="relative mb-3">
+                    <div className="absolute -inset-4 bg-orange-500/20 rounded-full blur-xl animate-pulse"></div>
                     <img
-                      src={astrologer?.image}
+                      src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
                       alt={astrologer?.name}
-                      className="w-24 h-24 rounded-full border border-orange-500/40 opacity-70 blur-[1px]"
+                      className="w-28 h-28 rounded-full border-2 border-orange-500/60 object-cover shadow-2xl relative z-10"
                     />
-                    <p className="text-xs text-gray-400 mt-3">
-                      {peerVideoMuted ? "Astrologer's camera is off" : "Connecting video stream..."}
-                    </p>
                   </div>
-                ) : null}
-              </div>
+                  <h3 className="text-xl font-bold text-white mb-1">{astrologer?.name || "Astrologer"}</h3>
+                  <p className="text-xs text-gray-400 font-medium">
+                    {peerVideoMuted ? "Astrologer's camera is turned off" : "Connecting video stream..."}
+                  </p>
+                </div>
+              )}
+            </div>
 
-              {/* Local Video Thumbnail Container (Floating picture-in-picture) */}
-              <div className="absolute top-20 right-4 w-28 h-40 bg-zinc-900 rounded-xl overflow-hidden border-2 border-white/20 z-20 shadow-xl">
-                <div 
-                  ref={localVideoRef} 
+            {/* Picture-in-Picture Local Video Tile */}
+            <div className="absolute top-20 right-4 w-28 h-40 bg-slate-900 rounded-2xl overflow-hidden border-2 border-white/20 z-30 shadow-2xl transition-all">
+              <div 
+                ref={localVideoRef} 
+                className="w-full h-full relative overflow-hidden [&>video]:!object-cover [&>video]:!w-full [&>video]:!h-full [&>div]:!h-full [&>div]:!w-full"
+              />
+              {isCameraOff && (
+                <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center gap-1.5 text-gray-400 z-10">
+                  <VideoOff size={20} />
+                  <span className="text-[10px] font-bold">Cam Off</span>
+                </div>
+              )}
+            </div>
+
+          </div>
+        ) : (
+          /* Audio Call Mode View */
+          <div className="flex flex-col items-center justify-center my-auto space-y-6 z-10 mt-24">
+            <div className="relative">
+              <div className="absolute -inset-4 bg-orange-500/20 rounded-full blur-2xl animate-pulse"></div>
+              <div className="w-36 h-36 rounded-full overflow-hidden border-4 border-orange-500 shadow-2xl relative">
+                <img
+                  src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
+                  alt={astrologer?.name}
                   className="w-full h-full object-cover"
                 />
-                {isCameraOff && (
-                  <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-                    <VideoOff size={16} className="text-gray-500" />
-                  </div>
-                )}
-              </div>
-
-            </div>
-          ) : (
-            // Audio Call Mode UI Layout
-            <div className="flex flex-col items-center justify-center my-auto space-y-6 z-10 mt-24">
-              <div className="relative">
-                <div className="absolute -inset-4 bg-orange-500/10 rounded-full blur-xl animate-pulse"></div>
-                <div className="w-36 h-36 rounded-full overflow-hidden border-4 border-orange-500 shadow-2xl relative">
-                  <img
-                    src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
-                    alt={astrologer?.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </div>
-
-              <div className="text-center space-y-1">
-                <h3 className="text-2xl font-bold">{astrologer?.name || "Astrologer"}</h3>
-                <p className="text-green-400 text-xs font-bold tracking-wider uppercase flex items-center gap-1.5 justify-center">
-                  <span className="w-2 h-2 rounded-full bg-green-400 animate-ping"></span>
-                  Active Voice Call
-                </p>
               </div>
             </div>
-          )}
 
-          {/* Action Bar Overlay */}
-          <div className="w-full px-8 pb-12 pt-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10 flex flex-col items-center gap-4">
-            <div className="flex items-center gap-6">
-              
-              {/* Mic Control */}
+            <div className="text-center space-y-1">
+              <h3 className="text-2xl font-bold">{astrologer?.name || "Astrologer"}</h3>
+              <p className="text-emerald-400 text-xs font-bold tracking-wider uppercase flex items-center gap-1.5 justify-center">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                Active Voice Call
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Control Action Bar Overlay */}
+        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-3 pb-8 pt-12 px-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
+          <div className="flex items-center justify-center gap-6">
+            
+            {/* Mic Toggle */}
+            <button
+              onClick={toggleMute}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer shadow-lg active:scale-90 ${
+                isMuted 
+                  ? "bg-rose-500 text-white shadow-rose-500/30 border-2 border-rose-400" 
+                  : "bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-md"
+              }`}
+            >
+              {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+            </button>
+
+            {/* End Call Button */}
+            <button
+              onClick={handleEndCall}
+              className="w-16 h-16 rounded-full bg-gradient-to-tr from-red-600 to-rose-500 hover:from-red-700 hover:to-rose-600 flex items-center justify-center shadow-xl shadow-red-600/40 transform active:scale-90 transition-all cursor-pointer border border-red-400/40"
+            >
+              <PhoneOff size={26} className="text-white" />
+            </button>
+
+            {/* Camera Toggle */}
+            {isVideo ? (
               <button
-                onClick={toggleMute}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                  isMuted ? "bg-red-500/20 border border-red-500 text-red-500" : "bg-white/10 hover:bg-white/20 border border-white/10 text-white"
+                onClick={toggleCamera}
+                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer shadow-lg active:scale-90 ${
+                  isCameraOff 
+                    ? "bg-rose-500 text-white shadow-rose-500/30 border-2 border-rose-400" 
+                    : "bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-md"
                 }`}
               >
-                {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+                {isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
               </button>
+            ) : (
+              <div className="w-14 h-14"></div>
+            )}
 
-              {/* Hangup Call */}
-              <button
-                onClick={handleEndCall}
-                className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center shadow-lg hover:shadow-red-600/40 active:scale-95 transition-all cursor-pointer"
-              >
-                <PhoneOff size={24} className="text-white" />
-              </button>
-
-              {/* Camera Toggle (Video Call Only) */}
-              {isVideo ? (
-                <button
-                  onClick={toggleCamera}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                    isCameraOff ? "bg-red-500/20 border border-red-500 text-red-500" : "bg-white/10 hover:bg-white/20 border border-white/10 text-white"
-                  }`}
-                >
-                  {isCameraOff ? <VideoOff size={20} /> : <Video size={20} />}
-                </button>
-              ) : (
-                <div className="w-14 h-14"></div> // Spacer for layout balance
-              )}
-
-            </div>
-            
-            <p className="text-xs text-white/50 tracking-wider">Tap red button to end call</p>
           </div>
-
+          
+          <p className="text-[11px] font-medium text-white/50 tracking-wider">
+            Tap red button to end call
+          </p>
         </div>
+
       </div>
     );
   }

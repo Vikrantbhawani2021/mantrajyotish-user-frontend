@@ -709,6 +709,55 @@ export default function EditProfile() {
           </div>
         </div>
 
+        {/* Cool Custom Popup Modal */}
+        {popup.show && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
+            <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl relative border border-orange-100 flex flex-col items-center text-center transform transition-all duration-300 scale-100">
+              <button
+                onClick={closePopup}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Icon Header */}
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+                popup.type === "success" 
+                  ? "bg-gradient-to-tr from-emerald-100 to-green-50 text-emerald-600 shadow-md shadow-emerald-100" 
+                  : "bg-gradient-to-tr from-rose-100 to-red-50 text-rose-600 shadow-md shadow-rose-100"
+              }`}>
+                {popup.type === "success" ? (
+                  <CheckCircle2 className="w-9 h-9" />
+                ) : (
+                  <AlertCircle className="w-9 h-9" />
+                )}
+              </div>
+
+              {/* Title */}
+              <h3 className="text-xl font-bold text-gray-900 mb-1">
+                {popup.title}
+              </h3>
+
+              {/* Message */}
+              <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+                {popup.message}
+              </p>
+
+              {/* Action Button */}
+              <button
+                onClick={closePopup}
+                className={`w-full py-3.5 px-6 rounded-2xl font-semibold text-white shadow-lg transition-all transform active:scale-95 cursor-pointer ${
+                  popup.type === "success"
+                    ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-orange-200"
+                    : "bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 shadow-red-200"
+                }`}
+              >
+                {popup.type === "success" ? "Continue" : "Got It"}
+              </button>
+            </div>
+          </div>
+        )}
+
         <style>{`
           @keyframes fadeIn {
             from { opacity: 0; transform: translateY(4px); }

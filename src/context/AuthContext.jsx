@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 
 const AuthContext = createContext();
 
@@ -71,6 +71,31 @@ export function AuthProvider({ children }) {
       setJustLoggedOut(false);
     }, 1000);
   };
+
+  // Set up global 401 interceptor to auto-logout on expired/invalid token
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      try {
+        const response = await originalFetch(...args);
+        if (response.status === 401) {
+          const token = localStorage.getItem("authToken");
+          if (token) {
+            console.warn("Unauthorized API access (401) detected. Logging out user...");
+            logoutUser();
+            window.location.replace("/login");
+          }
+        }
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
 
   const updateUserName = (name) => {
     localStorage.setItem("userName", name);

@@ -30,9 +30,19 @@ export function AuthProvider({ children }) {
 
   const saveUser = (userData) => {
     if (userData) {
-      localStorage.setItem("user", JSON.stringify(userData));
-      setUser(userData);
       const name = userData.name || `${userData.firstname || ""} ${userData.lastname || ""}`.trim() || "";
+      const isCompleted = 
+        userData.isProfileCompleted || 
+        !!userData.firstname || 
+        (!!name && name !== "Ravi Sharma" && name !== "Astro Client User");
+      
+      const updatedData = {
+        ...userData,
+        isProfileCompleted: isCompleted
+      };
+
+      localStorage.setItem("user", JSON.stringify(updatedData));
+      setUser(updatedData);
       if (name) {
         localStorage.setItem("userName", name);
         setUserName(name);
@@ -79,7 +89,11 @@ export function AuthProvider({ children }) {
     setPendingRedirect(null);
   };
 
-  const isProfileCompleted = user?.isProfileCompleted || false;
+  const isProfileCompleted = 
+    user?.isProfileCompleted || 
+    !!user?.firstname || 
+    (!!user?.name && user?.name !== "Ravi Sharma" && user?.name !== "Astro Client User") || 
+    false;
 
   return (
     <AuthContext.Provider

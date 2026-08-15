@@ -273,8 +273,8 @@ export default function EditProfile() {
       if (!trimmed) {
         return `Please enter your ${fieldName}`;
       }
-      if (!/^[a-zA-Z\s]+$/.test(trimmed)) {
-        return `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} must contain only letters (no numbers or special characters)`;
+      if (!/^[a-zA-Z0-9\s,.\-()'/]+$/.test(trimmed)) {
+        return `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} must contain only letters, numbers, or common punctuation`;
       }
     }
 

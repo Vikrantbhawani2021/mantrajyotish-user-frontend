@@ -2,9 +2,9 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, CreditCard, Landmark, Wallet as WalletIcon, Lock, ShieldCheck, ArrowRightLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
-import walletIllustration from "../assets/wallet_illustration.png";
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com";
+import walletIllustration from "../assets/wallet.webp";
+import { BACKEND_URL } from "../config/backend";
+import { getBalance, addFunds } from "../api/wallet";
 
 const quickAmounts = [100, 500, 1000, 2000, 5000];
 
@@ -68,35 +68,19 @@ export default function Deposit() {
   useEffect(() => {
     const fetchBalance = async () => {
       const { userId, phone } = getUserInfo();
-      const token = getToken();
-
       const savedLocal = parseFloat(localStorage.getItem("wallet_balance") || "0");
-
       try {
-        const headers = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-
-        let queryStr = "";
-        if (userId) queryStr = `userId=${userId}`;
-        else if (phone) queryStr = `phone=${encodeURIComponent(phone)}`;
-
-        const url = queryStr
-          ? `${BACKEND_URL}/api/wallet/balance?${queryStr}`
-          : `${BACKEND_URL}/api/wallet/balance`;
-
-        const res = await fetch(url, { headers });
-        const data = await res.json();
-
-        if (data.success && data.data !== undefined) {
-          const backendBal = data.data.walletBalance ?? data.data.balance ?? 0;
-          // Use maximum of backend and local balance so balance never drops unexpectedly
+        const queryStr = userId ? `userId=${userId}` : phone ? `phone=${encodeURIComponent(phone)}` : "";
+        const res = await getBalance(queryStr);
+        if (res && res.success && res.data !== undefined) {
+          const backendBal = res.data.walletBalance ?? res.data.balance ?? 0;
           const maxBal = Math.max(backendBal, savedLocal);
           setBalance(maxBal);
           localStorage.setItem("wallet_balance", maxBal.toFixed(2));
         } else {
           setBalance(savedLocal);
         }
-      } catch {
+      } catch (e) {
         setBalance(savedLocal);
       }
     };
@@ -130,15 +114,8 @@ export default function Deposit() {
       let txnId = `TXN_${Date.now()}`;
 
       try {
-        const res = await fetch(`${BACKEND_URL}/api/wallet/add`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body)
-        });
-
-        const data = await res.json();
-
-        if (data.success && data.data) {
+        const data = await addFunds(body);
+        if (data && data.success && data.data) {
           newBalance = data.data.newBalance ?? newBalance;
           if (data.data.transactionId) txnId = data.data.transactionId;
         }
@@ -261,10 +238,13 @@ export default function Deposit() {
               <h1 className="text-lg font-extrabold text-[#1d2340]">Add Money</h1>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-full shadow-sm text-xs font-bold text-[#FF6F3D]">
-              <span className="w-1.5 h-1.5 bg-[#FF6F3D] rounded-full animate-pulse"></span>
+            <button
+              onClick={() => navigate("/wallet")}
+              className="inline-flex items-center gap-2 bg-white border border-orange-200 px-3.5 py-1 rounded-full shadow-sm text-sm font-bold text-[#FF6F3D] hover:bg-orange-50 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF6F3D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 3v4"></path><path d="M8 3v4"></path></svg>
               Astro Wallet
-            </div>
+            </button>
           </div>
 
           <div className="px-4 py-4 space-y-5">

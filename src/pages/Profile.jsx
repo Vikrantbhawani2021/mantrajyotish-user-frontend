@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import { useAuth } from "../context/AuthContext";
+import { BACKEND_URL } from "../config/backend";
 
 function Profile() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ function Profile() {
 
     const token = localStorage.getItem("authToken");
     if (token) {
-      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
+      fetch(`${BACKEND_URL}/api/user/profile`, {
         headers: {
           Authorization: `Bearer ${token}`
         }

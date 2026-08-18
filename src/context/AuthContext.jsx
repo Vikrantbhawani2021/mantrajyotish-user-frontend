@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { BACKEND_URL } from "../config/backend";
 
 const AuthContext = createContext();
 
@@ -60,6 +61,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("userName");
     localStorage.removeItem("user");
     localStorage.removeItem("authToken");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("phone");
     localStorage.removeItem("dob");
     setUserName("");
@@ -75,20 +77,64 @@ export function AuthProvider({ children }) {
   // Set up global 401 interceptor to auto-logout on expired/invalid token
   useEffect(() => {
     const originalFetch = window.fetch;
+
     window.fetch = async (...args) => {
+      const [resource, config] = args;
+
+      // First attempt the original request
+      const response = await originalFetch(resource, config);
+
+      if (response.status !== 401) {
+        return response;
+      }
+
+      // If 401, try to refresh access token using refresh token
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (!refreshToken) {
+        logoutUser();
+        window.location.replace("/login");
+        return response;
+      }
+
       try {
-        const response = await originalFetch(...args);
-        if (response.status === 401) {
-          const token = localStorage.getItem("authToken");
-          if (token) {
-            console.warn("Unauthorized API access (401) detected. Logging out user...");
-            logoutUser();
-            window.location.replace("/login");
+        const refreshRes = await originalFetch(`${BACKEND_URL}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken })
+        });
+
+        if (!refreshRes.ok) {
+          logoutUser();
+          window.location.replace("/login");
+          return response;
+        }
+
+        let refreshData = null;
+        try {
+          refreshData = await refreshRes.json();
+        } catch (e) {
+          // continue
+        }
+
+        if (refreshData && refreshData.data) {
+          if (refreshData.data.token) {
+            localStorage.setItem("authToken", refreshData.data.token);
+          }
+          if (refreshData.data.refreshToken) {
+            localStorage.setItem("refreshToken", refreshData.data.refreshToken);
           }
         }
+
+        // Retry original request with updated token header
+        const newToken = localStorage.getItem("authToken");
+        const newConfig = { ...(config || {}), headers: { ...((config && config.headers) || {}), Authorization: `Bearer ${newToken}` } };
+
+        return await originalFetch(resource, newConfig);
+      } catch (err) {
+        console.error("Token refresh failed:", err);
+        logoutUser();
+        window.location.replace("/login");
         return response;
-      } catch (error) {
-        throw error;
       }
     };
 

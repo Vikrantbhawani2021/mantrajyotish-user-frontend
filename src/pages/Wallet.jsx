@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Plus, FileText, Tag, ChevronRight, Phone, MessageCircle, Video, RefreshCw, TrendingDown, TrendingUp, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
-import walletIllustration from "../assets/wallet_illustration.png";
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com";
+import walletIllustration from "../assets/wallet.webp";
+import { BACKEND_URL } from "../config/backend";
+import { getBalance, getTransactions } from "../api/wallet";
 
 const renderIcon = (type) => {
   switch (type) {
@@ -56,20 +56,10 @@ export default function Wallet() {
       const headers = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      let queryStr = "";
-      if (userId) queryStr = `userId=${userId}`;
-      else if (phone) queryStr = `phone=${encodeURIComponent(phone)}`;
-
-      const url = queryStr
-        ? `${BACKEND_URL}/api/wallet/balance?${queryStr}`
-        : `${BACKEND_URL}/api/wallet/balance`;
-
-      const res = await fetch(url, { headers });
-      const data = await res.json();
-
-      if (data.success && data.data !== undefined) {
-        const backendBal = data.data.walletBalance ?? data.data.balance ?? 0;
-        // Never reduce balance if local added money hasn't synced to legacy backend yet
+      const queryStr = userId ? `userId=${userId}` : phone ? `phone=${encodeURIComponent(phone)}` : "";
+      const res = await getBalance(queryStr);
+      if (res && res.success && res.data !== undefined) {
+        const backendBal = res.data.walletBalance ?? res.data.balance ?? 0;
         const effectiveBal = Math.max(backendBal, savedLocal);
         setBalance(effectiveBal);
         localStorage.setItem("wallet_balance", effectiveBal.toFixed(2));
@@ -97,19 +87,9 @@ export default function Wallet() {
         const headers = { "Content-Type": "application/json" };
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
-        let queryStr = "";
-        if (userId) queryStr = `userId=${userId}`;
-        else if (phone) queryStr = `phone=${encodeURIComponent(phone)}`;
-
-        const url = queryStr
-          ? `${BACKEND_URL}/api/wallet/transactions?${queryStr}`
-          : `${BACKEND_URL}/api/wallet/transactions`;
-
-        const res = await fetch(url, { headers });
-        const data = await res.json();
-
-        if (data.success && Array.isArray(data.data)) {
-          // Deduplicate local + backend transactions
+        const queryStr = userId ? `userId=${userId}` : phone ? `phone=${encodeURIComponent(phone)}` : "";
+        const data = await getTransactions(queryStr);
+        if (data && data.success && Array.isArray(data.data)) {
           const existingIds = new Set(data.data.map(t => String(t.id)));
           const filteredLocal = localTxs.filter(t => !existingIds.has(String(t.id)));
           const merged = [...filteredLocal, ...data.data];
@@ -183,10 +163,13 @@ export default function Wallet() {
                   ₹{(balance ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                 </div>
 
-                <div className="inline-flex items-center gap-1.5 bg-white/70 backdrop-blur-sm border border-orange-200 px-3.5 py-1.5 rounded-full shadow-sm text-xs font-bold text-[#FF6F3D]">
-                  <Sparkles size={11} className="text-orange-500" />
+                <button
+                  onClick={() => navigate("/wallet")}
+                  className="inline-flex items-center gap-2 bg-white border border-orange-200 px-4 py-1 rounded-full shadow-sm text-sm font-bold text-[#FF6F3D] hover:bg-orange-50 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF6F3D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 3v4"></path><path d="M8 3v4"></path></svg>
                   Astro Wallet
-                </div>
+                </button>
               </div>
 
               <div className="w-28 h-28 flex-shrink-0 z-10">

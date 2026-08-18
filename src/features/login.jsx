@@ -3,6 +3,8 @@ import { Phone } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import logo from "../assets/logo.png";
+import { BACKEND_URL } from "../config/backend";
+import { sendOtp } from "../api/auth";
 
 function Login() {
   const navigate = useNavigate();
@@ -50,27 +52,13 @@ function Login() {
 
     try {
       const formattedPhone = "+91" + phone.trim();
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/send-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          phone: formattedPhone
-        })
-      });
+      const data = await sendOtp(formattedPhone);
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data && data.success) {
         localStorage.setItem("phone", formattedPhone);
         navigate("/otp", { state: { from: location.state?.from } });
       } else {
-        if (response.status === 429) {
-          alert("Too many requests. Please try again later.");
-        } else {
-          alert(data.message || `Failed to send OTP: ${response.statusText}`);
-        }
+        alert(data?.message || "Failed to send OTP");
       }
     } catch (error) {
       console.error("OTP Send Error:", error);

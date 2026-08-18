@@ -3,6 +3,9 @@ import { ArrowLeft, Search, Mic, MessageCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import { useAuth } from "../context/AuthContext";
+import { BACKEND_URL } from "../config/backend";
+import { initiateChat } from "../api/chat";
+import InsufficientBalanceModal from "../component/InsufficientBalanceModal";
 
 export default function Chat() {
   const navigate = useNavigate();
@@ -10,6 +13,7 @@ export default function Chat() {
   const [loadingAstro, setLoadingAstro] = useState(null);
   const [astrologers, setAstrologers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [insufficient, setInsufficient] = useState({ open: false, message: "" });
 
   const [followedAstro, setFollowedAstro] = useState(() => {
     try {
@@ -23,7 +27,7 @@ export default function Chat() {
     const fetchOnlineAstrologers = async () => {
       try {
         const token = localStorage.getItem("authToken");
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all`, {
+        const response = await fetch(`${BACKEND_URL}/api/astro/all`, {
           headers: {
             ...(token ? { "Authorization": `Bearer ${token}` } : {})
           }
@@ -95,7 +99,7 @@ export default function Chat() {
       // Dual dispatch: socket emission for real-time notification
       try {
         const { io } = await import("socket.io-client");
-        const socket = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
+        const socket = io(BACKEND_URL, {
           transports: ["polling", "websocket"]
         });
         socket.on("connect", () => {
@@ -109,38 +113,31 @@ export default function Chat() {
         console.warn("Direct socket chat request error:", sErr);
       }
 
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/initiate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          userId: userId,
-          astrologerId: item.id,
-          name: userName,
-          userName: userName
-        })
-      });
-
-      const resData = await response.json();
-      console.log("Chat initiate API response status:", response.status, resData);
-
-      if (response.ok && resData.success) {
-        // Navigate to the chat session screen, passing the created sessionId
-        navigate(`/chat-session/${item.name}`, { 
-          state: { 
-            astrologer: item,
-            sessionId: resData.data._id || resData.data.sessionId
-          } 
-        });
-      } else {
-        // Check if balance error or other
-        if (resData.message && (resData.message.toLowerCase().includes("balance") || resData.message.toLowerCase().includes("wallet") || resData.message.toLowerCase().includes("insufficient"))) {
-          alert(resData.message || "Insufficient wallet balance. Please recharge your wallet to start a chat.");
-          navigate("/wallet");
+      try {
+        const resData = await initiateChat({ userId, astrologerId: item.id, name: userName, userName });
+        console.log("Chat initiate API response:", resData);
+        if (resData && resData.success) {
+          navigate(`/chat-session/${item.name}`, {
+            state: {
+              astrologer: item,
+              sessionId: resData.data._id || resData.data.sessionId
+            }
+          });
         } else {
-          alert(resData.message || `Failed to start chat session: ${response.statusText}`);
+          const message = resData?.message || "Failed to start chat session.";
+          if (message.toLowerCase().includes("balance") || message.toLowerCase().includes("wallet") || message.toLowerCase().includes("insufficient")) {
+            setInsufficient({ open: true, message });
+          } else {
+            alert(message);
+          }
+        }
+      } catch (err) {
+        console.error("Chat initiate error:", err);
+        const message = err?.data?.message || err.message || "Failed to start chat session.";
+        if (message.toLowerCase().includes("balance") || message.toLowerCase().includes("wallet") || message.toLowerCase().includes("insufficient")) {
+          setInsufficient({ open: true, message });
+        } else {
+          alert(message);
         }
       }
     } catch (error) {
@@ -168,7 +165,7 @@ export default function Chat() {
             </button>
             
             <div className="text-center">
-              <h1 className="text-3xl font-bold text-white">
+              <h1 className="text-2xl font-bold text-white">
                 Chat with Astrologers
               </h1>
               <p className="text-orange-100 text-sm mt-1">
@@ -201,7 +198,7 @@ export default function Chat() {
                 No active online astrologers found.
               </div>
             ) : (
-              astrologers.map((item, index) => (
+                astrologers.map((item, index) => (
                 <div
                   key={index}
                   onClick={() => handleStartChat(item)}
@@ -282,6 +279,12 @@ export default function Chat() {
               ))
             )}
           </div>
+
+          <InsufficientBalanceModal
+            open={insufficient.open}
+            onClose={() => setInsufficient({ open: false, message: "" })}
+            message={insufficient.message}
+          />
 
         </div>
 

@@ -20,6 +20,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import { useAuth } from "../context/AuthContext";
 import logo from "../assets/logo.png";
+import { BACKEND_URL } from "../config/backend";
 
 const SunEmblem = () => (
   <svg
@@ -128,7 +129,7 @@ export default function EditProfile() {
       if (!token) return;
 
       try {
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
+        const response = await fetch(`${BACKEND_URL}/api/user/profile`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }
@@ -293,7 +294,7 @@ export default function EditProfile() {
       const token = localStorage.getItem("authToken");
       const phoneVal = localStorage.getItem("phone") || formData.phone;
 
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
+      const response = await fetch(`${BACKEND_URL}/api/user/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -376,7 +377,7 @@ export default function EditProfile() {
         }
       }
 
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
+      const response = await fetch(`${BACKEND_URL}/api/user/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

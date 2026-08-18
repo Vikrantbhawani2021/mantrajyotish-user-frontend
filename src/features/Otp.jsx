@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useRef, useState, useEffect } from "react";
 import logo from "../assets/logo.png";
 import { useAuth } from "../context/AuthContext";
+import { BACKEND_URL } from "../config/backend";
+import { verifyOtp, login as authLogin, sendOtp as sendOtpAPI } from "../api/auth";
 
 function Otp() {
   const navigate = useNavigate();
@@ -107,23 +109,15 @@ function Otp() {
       }
 
       // Call backend verify OTP API (Live Mode)
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/verify-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          phone: phoneNum,
-          otp: enteredOtp
-        }),
-      });
+      const data = await verifyOtp(phoneNum, enteredOtp);
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data && data.success) {
         // If verify-otp returns the token and user directly
         if (data.data && data.data.token) {
           localStorage.setItem("authToken", data.data.token);
+          if (data.data.refreshToken) {
+            localStorage.setItem("refreshToken", data.data.refreshToken);
+          }
           if (data.data.user) {
             saveUser(data.data.user);
           }
@@ -135,28 +129,15 @@ function Otp() {
             const signature = "dummy_signature";
             const jwt = `${header}.${payload}.${signature}`;
 
-            const loginResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/login`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                phone: phoneNum,
-                mobile: phoneNum,
-                tuloToken: jwt
-              }),
-            });
-
-            if (loginResponse.ok) {
-              const loginData = await loginResponse.json();
-              if (loginData.success && loginData.data) {
-                if (loginData.data.token) {
-                  localStorage.setItem("authToken", loginData.data.token);
-                }
-                if (loginData.data.user) {
-                  saveUser(loginData.data.user);
-                }
+            try {
+              const loginData = await authLogin({ phone: phoneNum, mobile: phoneNum, tuloToken: jwt });
+              if (loginData && loginData.success && loginData.data) {
+                if (loginData.data.token) localStorage.setItem("authToken", loginData.data.token);
+                if (loginData.data.refreshToken) localStorage.setItem("refreshToken", loginData.data.refreshToken);
+                if (loginData.data.user) saveUser(loginData.data.user);
               }
+            } catch (e) {
+              console.warn("Background Login API error (bypassing for onboarding):", e);
             }
           } catch (loginErr) {
             console.warn("Background Login API error (bypassing for onboarding):", loginErr);
@@ -213,27 +194,13 @@ function Otp() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/auth/send-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          phone: phone.trim()
-        })
-      });
+      const data = await sendOtpAPI(phone.trim());
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data && data.success) {
         setTimer(30);
         alert(data.message || "OTP Resent Successfully!");
       } else {
-        if (response.status === 429) {
-          alert("Too many requests. Please try again later.");
-        } else {
-          alert(data.message || `Failed to resend OTP: ${response.statusText}`);
-        }
+        alert(data?.message || "Failed to resend OTP");
       }
     } catch (error) {
       console.error("Resend OTP Error:", error);

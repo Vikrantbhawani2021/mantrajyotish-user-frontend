@@ -3,6 +3,7 @@ import { ArrowLeft, MoreVertical, Send, CheckCheck, Plus, Calendar, AlertTriangl
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
+import { BACKEND_URL } from "../config/backend";
 
 const CakeIcon = () => (
   <svg className="w-6 h-6 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -88,7 +89,7 @@ export default function ChatSession() {
 
     // Connect to Socket server
     const token = localStorage.getItem("authToken");
-    socketRef.current = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
+    socketRef.current = io(BACKEND_URL, {
       transports: ["polling", "websocket"],
       auth: {
         token: token
@@ -274,16 +275,11 @@ export default function ChatSession() {
     socket.on("end_chat", handleChatEnded);
     socket.on("end_session", handleChatEnded);
 
-    // Fetch chat history
+    // Fetch chat history using API helper
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/history/${sessionId}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        const resData = await response.json();
-        if (response.ok && resData.success && Array.isArray(resData.data)) {
+        const resData = await getHistory(sessionId);
+        if (resData && resData.success && Array.isArray(resData.data)) {
           const historyMessages = resData.data.map((msg) => ({
             id: String(msg._id || msg.id),
             sender: String(msg.senderType || msg.role || "").toLowerCase() === "user" ? "user" : "astrologer",
@@ -295,9 +291,7 @@ export default function ChatSession() {
             }),
           }));
 
-          if (historyMessages.some((m) => m.sender === "astrologer")) {
-            setSessionStatus("ACTIVE");
-          }
+          if (historyMessages.some((m) => m.sender === "astrologer")) setSessionStatus("ACTIVE");
 
           setMessages((prev) => {
             if (!Array.isArray(prev) || prev.length === 0) return historyMessages;
@@ -340,14 +334,8 @@ export default function ChatSession() {
         const userId = userObj._id || userObj.id || "";
         if (!userId) return;
 
-        const token = localStorage.getItem("authToken");
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/sessions?userId=${userId}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        const resData = await response.json();
-        if (response.ok && resData.success && resData.data) {
+        const resData = await getSessionsForUser(userId);
+        if (resData && resData.success && resData.data) {
           const currentSession = resData.data.find(s => s._id === sessionId || s.id === sessionId);
           if (currentSession && (currentSession.status === "ACTIVE" || currentSession.status === "COMPLETED" || currentSession.status === "ENDED")) {
             const finalStatus = currentSession.status === "ENDED" ? "COMPLETED" : currentSession.status;
@@ -401,20 +389,7 @@ export default function ChatSession() {
         messageType: "text"
       });
     } else {
-      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          sessionId: sessionId,
-          senderId: userId,
-          senderType: "USER",
-          text: dobText,
-          messageType: "text"
-        })
-      }).catch((err) => console.error("DOB send message REST API error:", err));
+      sendMessage({ sessionId, senderId: userId, senderType: "USER", text: dobText, messageType: "text" }).catch((err) => console.error("DOB send message REST API error:", err));
     }
   };
 
@@ -437,20 +412,7 @@ export default function ChatSession() {
         messageType: "text"
       });
     } else {
-      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          sessionId: sessionId,
-          senderId: userId,
-          senderType: "USER",
-          text: msgText,
-          messageType: "text"
-        })
-      }).catch((err) => console.error("User send message REST API error:", err));
+      sendMessage({ sessionId, senderId: userId, senderType: "USER", text: msgText, messageType: "text" }).catch((err) => console.error("User send message REST API error:", err));
     }
 
     // Optimistic locally added message
@@ -484,65 +446,40 @@ export default function ChatSession() {
     }
 
     setLoading(true);
-    try {
-      const formDataObj = new FormData();
-      formDataObj.append("image", file);
-
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/upload/image`, {
-        method: "POST",
-        headers: {
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: formDataObj
-      });
-
-      const resData = await response.json();
-
-      if (response.ok && resData.success) {
-        const imageUrl = resData.data.imageUrl || resData.imageUrl || resData.data.url;
-        // Emit image message to Socket
-        if (socketRef.current) {
-          socketRef.current.emit("send_message", {
-            sessionId: sessionId,
-            chatId: sessionId,
-            roomId: sessionId,
-            senderId: userId,
-            senderType: "USER",
-            text: "",
-            mediaUrl: imageUrl,
-            messageType: "image"
-          });
+      try {
+        const formDataObj = new FormData();
+        formDataObj.append("image", file);
+        const resData = await uploadImage(formDataObj);
+        if (resData && resData.success) {
+          const imageUrl = resData.data.imageUrl || resData.imageUrl || resData.data.url;
+          if (socketRef.current) {
+            socketRef.current.emit("send_message", {
+              sessionId: sessionId,
+              chatId: sessionId,
+              roomId: sessionId,
+              senderId: userId,
+              senderType: "USER",
+              text: "",
+              mediaUrl: imageUrl,
+              messageType: "image"
+            });
+          }
+        } else {
+          alert(resData?.message || "Failed to upload image.");
         }
-      } else {
-        alert(resData.message || "Failed to upload image.");
+      } catch (err) {
+        console.error("Image Upload Error:", err);
+        alert(`Image upload failed: ${err.message}`);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Image Upload Error:", err);
-      alert(`Image upload failed: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleEndChat = async () => {
     try {
-      if (socketRef.current) {
-        socketRef.current.emit("end_chat_session", { sessionId });
-      }
-
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/end`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ sessionId })
-      });
-
-      const resData = await response.json();
-      if (response.ok && resData.success) {
+      if (socketRef.current) socketRef.current.emit("end_chat_session", { sessionId });
+      const resData = await endChat(sessionId);
+      if (resData && resData.success) {
         setSessionStatus("COMPLETED");
         setSummaryData({
           totalDurationMinutes: resData.data?.totalDurationMinutes || elapsedMinutes,
@@ -551,11 +488,9 @@ export default function ChatSession() {
         });
         setShowConfirmEnd(false);
         setShowSummaryModal(true);
-        if (socketRef.current) {
-          socketRef.current.disconnect();
-        }
+        if (socketRef.current) socketRef.current.disconnect();
       } else {
-        alert(resData.message || "Failed to end chat session.");
+        alert(resData?.message || "Failed to end chat session.");
       }
     } catch (error) {
       console.error("Error ending chat:", error);
@@ -568,35 +503,16 @@ export default function ChatSession() {
       });
       setShowConfirmEnd(false);
       setShowSummaryModal(true);
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      if (socketRef.current) socketRef.current.disconnect();
     }
   };
 
   const handleRateSession = async () => {
     setSubmittingRate(true);
     try {
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/rate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          sessionId: sessionId,
-          rating: rating,
-          review: review
-        })
-      });
-
-      const resData = await response.json();
-      if (response.ok && resData.success) {
-        alert("Thank you for your rating!");
-      } else {
-        alert(resData.message || "Failed to submit rating.");
-      }
+      const resData = await rateChat({ sessionId, rating, review });
+      if (resData && resData.success) alert("Thank you for your rating!");
+      else alert(resData?.message || "Failed to submit rating.");
     } catch (err) {
       console.error("Rating Error:", err);
     } finally {

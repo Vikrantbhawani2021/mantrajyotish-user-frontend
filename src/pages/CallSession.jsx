@@ -4,6 +4,9 @@ import { io } from "socket.io-client";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Star, AlertTriangle, Clock, Wallet, CheckCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { BACKEND_URL } from "../config/backend";
+import { getBalance } from "../api/wallet";
+import { endVideoSession, rateVideoSession, callRate } from "../api/video";
 
 export default function CallSession() {
   const navigate = useNavigate();
@@ -127,21 +130,13 @@ export default function CallSession() {
 
   const fetchRealBalance = async () => {
     try {
-      const token = localStorage.getItem("authToken");
-      const headers = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      
-      const url = userId
-        ? `${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/wallet/balance?userId=${userId}`
-        : `${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/wallet/balance`;
-        
-      const res = await fetch(url, { headers });
-      const resData = await res.json();
-      if (resData.success && resData.data !== undefined) {
-        const bal = resData.data.walletBalance ?? resData.data.balance ?? 0;
-        setRemainingBalance(bal);
-        localStorage.setItem("wallet_balance", bal.toFixed(2));
-      }
+      const userObj = JSON.parse(localStorage.getItem("user") || "{}");
+      const uid = userObj._id || userObj.id || userObj.userId || "";
+      const query = uid ? `userId=${uid}` : "";
+      const res = await getBalance(query);
+      const bal = res?.data?.walletBalance ?? res?.data?.balance ?? 0;
+      setRemainingBalance(bal);
+      localStorage.setItem("wallet_balance", Number(bal).toFixed(2));
     } catch (err) {
       console.error("Error fetching real balance in CallSession:", err);
     }
@@ -163,7 +158,7 @@ export default function CallSession() {
     fetchRealBalance();
 
     const token = localStorage.getItem("authToken");
-    socketRef.current = io(import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com", {
+    socketRef.current = io(BACKEND_URL, {
       transports: ["polling", "websocket"],
       auth: { token }
     });
@@ -452,16 +447,7 @@ export default function CallSession() {
       // Emit socket event to end call session
       socketRef.current?.emit("end_call_session", { sessionId });
 
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/end/${sessionId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        }
-      });
-
-      const resData = await response.json();
+      const resData = await endVideoSession(sessionId);
       cleanupCall();
       setSessionStatus("COMPLETED");
 
@@ -497,33 +483,9 @@ export default function CallSession() {
     e.preventDefault();
     setSubmittingRate(true);
     try {
-      const token = localStorage.getItem("authToken");
-      let response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/rate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          sessionId,
-          rating,
-          review
-        })
-      });
-
-      if (!response.ok) {
-        response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/call/rate`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { "Authorization": `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({
-            sessionId,
-            rating,
-            review
-          })
-        });
+      const res = await rateVideoSession({ sessionId, rating, review });
+      if (!(res && res.success)) {
+        await callRate({ sessionId, rating, review });
       }
       alert("Thank you for your valuable feedback!");
     } catch (err) {

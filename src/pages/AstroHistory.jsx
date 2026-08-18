@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { FiArrowLeft } from "react-icons/fi";
+import { BACKEND_URL } from "../config/backend";
+import { getSessionsForUser } from "../api/chat";
+import { getVideoHistory } from "../api/video";
 import { useNavigate } from "react-router-dom";
 import HistoryCard from "../component/HistoryCard";
 
@@ -67,15 +70,15 @@ export default function AstroHistory() {
 
         // Fetch both chat sessions and video/audio sessions in parallel
         const [chatRes, callRes] = await Promise.allSettled([
-          fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/chat/sessions?userId=${userId}`, { headers }),
-          fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/video-session/history?userId=${userId}&role=user`, { headers })
+          getSessionsForUser(userId),
+          getVideoHistory(userId, "user")
         ]);
 
         let formattedChats = [];
         let formattedCalls = [];
 
-        if (chatRes.status === "fulfilled" && chatRes.value.ok) {
-          const chatJson = await chatRes.value.json();
+        if (chatRes.status === "fulfilled") {
+          const chatJson = chatRes.value;
           if (chatJson.success && chatJson.data) {
             formattedChats = chatJson.data.map(session => {
               const dateStr = session.startTime || session.createdAt || new Date();
@@ -97,8 +100,8 @@ export default function AstroHistory() {
           }
         }
 
-        if (callRes.status === "fulfilled" && callRes.value.ok) {
-          const callJson = await callRes.value.json();
+        if (callRes.status === "fulfilled") {
+          const callJson = callRes.value;
           if (callJson.success && callJson.data) {
             formattedCalls = callJson.data.map(session => {
               const dateStr = session.startTime || session.createdAt || new Date();

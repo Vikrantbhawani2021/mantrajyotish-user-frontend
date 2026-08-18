@@ -3,7 +3,9 @@ import { CheckCircle, Star, Phone, Video, Wallet, X, AlertTriangle } from "lucid
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com";
+import { BACKEND_URL } from "../config/backend";
+import { getBalance } from "../api/wallet";
+import { requestVideoSession } from "../api/astro";
 
 // Inline Recharge Prompt Modal
 function RechargeModal({ astrologerName, rate, currentBalance, onClose, onRecharge }) {
@@ -110,33 +112,18 @@ function AstrologerCard({ item }) {
 
   // Get current wallet balance (from localStorage cache or backend)
   const getWalletBalance = async () => {
-    const token = localStorage.getItem("authToken") || "";
-    const userObj = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = userObj._id || userObj.id || userObj.userId || localStorage.getItem("phone") || "";
-
-    // Quick check from localStorage first
-    const localBalance = parseFloat(localStorage.getItem("wallet_balance") || "0.00");
-
-    if (userId || token) {
-      try {
-        const headers = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        const url = userId
-          ? `${BACKEND_URL}/api/wallet/balance?userId=${userId}`
-          : `${BACKEND_URL}/api/wallet/balance`;
-        const res = await fetch(url, { headers });
-        const resData = await res.json();
-        if (resData.success && resData.data !== undefined) {
-          const bal = resData.data.walletBalance ?? resData.data.balance ?? 0;
-          localStorage.setItem("wallet_balance", bal.toFixed(2));
-          return bal;
-        }
-      } catch {}
+    try {
+      const userObj = JSON.parse(localStorage.getItem("user") || "{}");
+      const userId = userObj._id || userObj.id || userObj.userId || localStorage.getItem("phone") || "";
+      const query = userId ? `userId=${userId}` : "";
+      const res = await getBalance(query);
+      const bal = res?.data?.walletBalance ?? res?.data?.balance ?? parseFloat(localStorage.getItem("wallet_balance") || "0");
+      localStorage.setItem("wallet_balance", Number(bal).toFixed(2));
+      return Number(bal);
+    } catch (e) {
+      const effective = parseFloat(localStorage.getItem("wallet_balance") || "0");
+      return effective;
     }
-
-    const effective = localBalance;
-    localStorage.setItem("wallet_balance", effective.toFixed(2));
-    return effective;
   };
 
   const handleStartCall = async (type) => {
@@ -181,41 +168,17 @@ function AstrologerCard({ item }) {
             walletBalance: currentBalance
           });
         });
-      } catch (sErr) {
-        console.warn("Direct socket call request emission warning:", sErr);
-      }
 
-      try {
-        response = await fetch(`${BACKEND_URL}/api/video-session/request`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { "Authorization": `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({
-            userId: userId,
-            astrologerId: astroId,
-            callType: type,
-            walletBalance: currentBalance
-          })
-        });
+        // Use API helper to request video session
+        resData = await requestVideoSession({ userId, astrologerId: astroId, callType: type, walletBalance: currentBalance });
 
-        if (!response.ok) {
-          console.warn("Backend call request returned non-OK status:", response.status);
-          alert("Failed to connect to Astrologer. The astrologer might be offline. Please try again later.");
+        if (!resData || !resData.success) {
+          alert(resData?.message || "Failed to initiate call. Please try again.");
           setLoadingCall(null);
           return;
         }
-        
-        resData = await response.json();
-        
-        if (!resData || !resData.success) {
-           alert("Failed to initiate call. Please try again.");
-           setLoadingCall(null);
-           return;
-        }
       } catch (fetchErr) {
-        console.error("Failed to connect to backend for call request HTTP fetch:", fetchErr);
+        console.error("Failed to connect to backend for call request:", fetchErr);
         alert("Network error. Please check your connection and try again.");
         setLoadingCall(null);
         return;

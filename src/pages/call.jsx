@@ -4,6 +4,7 @@ import CallSearchBar from "../component/CallSearchBar";
 import CategoryTabs from "../component/CategoryTabs";
 import AstrologerCard from "../component/AstrologerCard";
 import Bottomnav from "../component/Bottomnav";
+import { fetchAllAstrologers } from "../api/astro";
 
 function Call() {
   const [astrologers, setAstrologers] = useState([]);
@@ -12,18 +13,12 @@ function Call() {
   useEffect(() => {
     const fetchOnlineAstrologers = async () => {
       try {
-        const token = localStorage.getItem("authToken");
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/astro/all`, {
-          headers: {
-            ...(token ? { "Authorization": `Bearer ${token}` } : {})
-          }
-        });
-        const resData = await response.json();
+        const resData = await fetchAllAstrologers();
         console.log("Fetch Astrologers API Response:", resData);
         
         const list = resData.data || (Array.isArray(resData) ? resData : []);
-        
-        if (response.ok && resData.success && list && list.length > 0) {
+
+        if (resData && resData.success && list && list.length > 0) {
           const formatted = list.map(astro => ({
             id: astro._id || astro.id,
             name: astro.name || "Astrologer",

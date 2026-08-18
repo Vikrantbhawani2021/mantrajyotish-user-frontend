@@ -6,6 +6,7 @@ import Banner from "../component/Banner";
 import ServiceGrid from "../component/ServiceGrid";
 import Bottomnav from "../component/Bottomnav";
 import PlanetCard from "../component/PlanetCard";
+import { BACKEND_URL } from "../config/backend";
 
 const planets = [
   {
@@ -80,7 +81,7 @@ function Home() {
     if (isLoggedIn) {
       const token = localStorage.getItem("authToken");
       if (token) {
-        fetch(`${import.meta.env.VITE_BACKEND_URL || "https://kalpjoytish-backend.onrender.com"}/api/user/profile`, {
+        fetch(`${BACKEND_URL}/api/user/profile`, {
           headers: {
             Authorization: `Bearer ${token}`
           }

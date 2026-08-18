@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, CreditCard, Landmark, Wallet as WalletIcon, Lock, ShieldCheck, ArrowRightLeft, CheckCircle2, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import walletIllustration from "../assets/wallet.webp";
 import { BACKEND_URL } from "../config/backend";
 import { getBalance, addFunds } from "../api/wallet";
 import { createOrder, verifyPayment, loadRazorpayScript } from "../payments/razorpay";
+import Toast from "../component/Toast";
 
 const quickAmounts = [100, 250, 500, 1000, 2000, 5000];
 
@@ -51,6 +52,11 @@ export default function Deposit() {
   const [selectedMethod, setSelectedMethod] = useState("upi");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null); // { newBalance, addedAmount }
+  const [lastOrder, setLastOrder] = useState(null);
+  const [lastVerify, setLastVerify] = useState(null);
+  const [txnModalOpen, setTxnModalOpen] = useState(false);
+  const [txnDetails, setTxnDetails] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: "", type: "info" });
 
   const getUserInfo = () => {
     let userId = null;
@@ -89,10 +95,15 @@ export default function Deposit() {
     fetchBalance();
   }, []);
 
+  // read appointmentId from query params (optional)
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const appointmentIdParam = searchParams.get("appointmentId") || null;
+
   const handleDeposit = async () => {
     const amt = parseFloat(inputAmount);
     if (isNaN(amt) || amt <= 0) {
-      alert("Please enter a valid amount to deposit.");
+      setToast({ show: true, message: "Please enter a valid amount to deposit.", type: "error" });
       return;
     }
 
@@ -168,7 +179,7 @@ export default function Deposit() {
   const handleRazorpay = async () => {
     const amt = parseFloat(inputAmount);
     if (isNaN(amt) || amt <= 0) {
-      alert("Please enter a valid amount to deposit.");
+      setToast({ show: true, message: "Please enter a valid amount to deposit.", type: "error" });
       return;
     }
 
@@ -176,23 +187,28 @@ export default function Deposit() {
     try {
       let orderRes;
       try {
-        orderRes = await createOrder(amt);
+        const { userId } = getUserInfo();
+        const extras = {};
+        if (userId) extras.userId = userId;
+        if (appointmentIdParam) extras.appointmentId = appointmentIdParam;
+        orderRes = await createOrder(amt, extras);
+        setLastOrder(orderRes);
       } catch (err) {
         console.error("createOrder error:", err);
         const serverMsg = err?.data?.message || err?.message || JSON.stringify(err?.data || err);
-        alert("Order creation failed: " + serverMsg);
+        setToast({ show: true, message: "Order creation failed: " + serverMsg, type: "error" });
         return;
       }
 
       if (!orderRes || !orderRes.success) {
         const msg = orderRes?.message || JSON.stringify(orderRes?.data || orderRes) || "Failed to create order. Try again.";
-        alert("Order creation failed: " + msg);
+        setToast({ show: true, message: "Order creation failed: " + msg, type: "error" });
         return;
       }
 
       const { order, keyId } = orderRes.data || {};
       if (!order || !keyId) {
-        alert("Invalid order response from server.");
+        setToast({ show: true, message: "Invalid order response from server.", type: "error" });
         return;
       }
 
@@ -206,16 +222,22 @@ export default function Deposit() {
         description: `Add ₹${amt} to wallet`,
         order_id: order.id,
         handler: async function (response) {
+            setLoading(true); // show spinner while verifying
             try {
-              const verifyRes = await verifyPayment({
+              // include userId when there is no auth token
+              const token = getToken();
+              const { userId } = getUserInfo();
+              const verifyBody = {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                amount: amt
-              });
+                razorpay_signature: response.razorpay_signature
+              };
+              if (userId) verifyBody.userId = userId;
 
-              if (verifyRes && verifyRes.success) {
-                // Refresh local balance from server
+              const verifyRes = await verifyPayment(verifyBody);
+              setLastVerify(verifyRes);
+
+                if (verifyRes && verifyRes.success) {
                 try {
                   const balRes = await getBalance();
                   const backendBal = balRes?.data?.walletBalance ?? balRes?.data?.balance ?? 0;
@@ -224,15 +246,59 @@ export default function Deposit() {
                 } catch (e) {
                   console.warn("Failed to refresh balance after verify:", e);
                 }
-                alert("Payment successful and wallet credited.");
+
+                // persist transaction in local history with razorpay ids
+                try {
+                  const formattedDate = new Date().toLocaleString("en-GB", {
+                    day: "numeric", month: "short", year: "numeric",
+                    hour: "2-digit", minute: "2-digit", hour12: true
+                  }).replace(",", "");
+
+                  const tx = {
+                    id: response.razorpay_payment_id || `pay_${Date.now()}`,
+                    orderId: response.razorpay_order_id,
+                    paymentId: response.razorpay_payment_id,
+                    title: "Added Money",
+                    date: formattedDate,
+                    amount: `+ ₹${amt.toFixed(2)}`,
+                    amountClass: "text-[#22C55E]",
+                    status: "Success",
+                    statusClass: "text-[#22C55E]",
+                    iconBg: "bg-green-50 text-green-500",
+                    iconType: "plus",
+                    raw: verifyRes
+                  };
+                  const saved = localStorage.getItem("wallet_transactions");
+                  const currentTxs = saved ? JSON.parse(saved) : [];
+                  localStorage.setItem("wallet_transactions", JSON.stringify([tx, ...currentTxs]));
+                } catch (e) {
+                  console.warn("Could not persist transaction locally:", e);
+                }
+                // prepare and open transaction modal with details
+                const txn = {
+                  paymentId: response.razorpay_payment_id,
+                  orderId: response.razorpay_order_id,
+                  amount: (verifyRes?.data?.amount ? Number(verifyRes.data.amount) / 100 : amt),
+                  currency: verifyRes?.data?.currency || order?.currency || "INR",
+                  date: new Date().toLocaleString(),
+                  raw: verifyRes
+                };
+                setTxnDetails(txn);
+                setTxnModalOpen(true);
+                // also show quick toast
+                setToast({ show: true, message: "Payment successful and wallet credited.", type: "success" });
               } else {
                 const serverMsg = verifyRes?.message || JSON.stringify(verifyRes?.data || verifyRes) || "Verification failed. Please contact support.";
-                alert(serverMsg);
+                setToast({ show: true, message: serverMsg, type: "error" });
               }
-            } catch (err) {
-              console.error("Verification error:", err);
-              const serverMsg = err?.data?.message || err?.message || JSON.stringify(err?.data || err);
-              alert("Verification failed: " + serverMsg);
+              } catch (err) {
+                console.error("Verification error:", err);
+                const serverMsg = err?.data?.message || err?.message || JSON.stringify(err?.data || err);
+                // store error for retry/debug
+                setLastVerify(err);
+                setToast({ show: true, message: "Verification failed: " + serverMsg, type: "error" });
+              } finally {
+              setLoading(false);
             }
         },
         prefill: {
@@ -240,9 +306,6 @@ export default function Deposit() {
         },
         theme: { color: "#FF6F3D" }
       };
-
-      console.debug("Razorpay order response:", orderRes);
-      console.debug("Opening Razorpay checkout with options:", options);
 
       const rzp = new window.Razorpay(options);
 
@@ -252,12 +315,11 @@ export default function Deposit() {
           console.error("Razorpay payment.failed:", resp);
           const err = resp?.error || {};
           const errMsg = err.description || err.reason || err.code || JSON.stringify(err);
-          // Provide a helpful hint when international cards are blocked
-          if ((errMsg || "").toString().toLowerCase().includes("international")) {
-            alert("Payment failed: International cards are not supported by your Razorpay account. Use a domestic/test card or enable international cards in Razorpay Dashboard.");
-          } else {
-            alert("Payment failed: " + errMsg);
-          }
+            if ((errMsg || "").toString().toLowerCase().includes("international")) {
+              setToast({ show: true, message: "Payment failed: International cards are not supported. Use a domestic/test card or enable international cards.", type: "error" });
+            } else {
+              setToast({ show: true, message: "Payment failed: " + errMsg, type: "error" });
+            }
         });
       } catch (e) {
         console.warn("Could not attach payment.failed handler", e);
@@ -267,7 +329,49 @@ export default function Deposit() {
 
     } catch (err) {
       console.error("Razorpay flow error:", err);
-      alert(err.message || "Payment initialization failed.");
+      setToast({ show: true, message: err.message || "Payment initialization failed.", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Retry verification helper (uses lastOrder / lastVerify data)
+  const retryVerify = async () => {
+    if (!lastVerify || !lastVerify?.payment_id && !lastVerify?.razorpay_payment_id) {
+      setToast({ show: true, message: "No payment info available to retry.", type: "error" });
+      return;
+    }
+    const paymentId = lastVerify.payment_id || lastVerify.razorpay_payment_id;
+    const orderId = lastVerify.order_id || lastVerify.razorpay_order_id || (lastOrder?.data?.order?.id);
+      if (!paymentId || !orderId) {
+        setToast({ show: true, message: "Missing order/payment id for retry.", type: "error" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const verifyBody = {
+        razorpay_order_id: orderId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: lastVerify.razorpay_signature || lastVerify.signature || undefined
+      };
+      const { userId } = getUserInfo();
+      if (userId) verifyBody.userId = userId;
+      const res = await verifyPayment(verifyBody);
+      setLastVerify(res);
+      if (res && res.success) {
+        try {
+          const balRes = await getBalance();
+          const backendBal = balRes?.data?.walletBalance ?? balRes?.data?.balance ?? 0;
+          setBalance(backendBal);
+          localStorage.setItem("wallet_balance", Number(backendBal).toFixed(2));
+        } catch (e) { console.warn(e); }
+        setToast({ show: true, message: "Verification retry successful.", type: "success" });
+      } else {
+        setToast({ show: true, message: "Retry failed: " + (res?.message || JSON.stringify(res?.data || res)), type: "error" });
+      }
+    } catch (e) {
+      console.error("Retry verify error:", e);
+      setToast({ show: true, message: "Retry failed: " + (e?.message || JSON.stringify(e?.data || e)), type: "error" });
     } finally {
       setLoading(false);
     }
@@ -322,6 +426,67 @@ export default function Deposit() {
               </button>
             </div>
           </div>
+            {/* Dev-only debug panel to aid backend testing */}
+          {import.meta.env.DEV && (
+            <div className="px-4 pb-4">
+              <div className="text-xs text-gray-500 font-medium mb-2">Debug</div>
+              <div className="space-y-2">
+                <pre className="text-[11px] p-2 bg-gray-50 rounded-md max-h-32 overflow-auto">{lastOrder ? JSON.stringify(lastOrder, null, 2) : "No order created yet"}</pre>
+                <pre className="text-[11px] p-2 bg-gray-50 rounded-md max-h-32 overflow-auto">{lastVerify ? JSON.stringify(lastVerify, null, 2) : "No verify response yet"}</pre>
+                <div className="flex gap-2">
+                  <button onClick={() => { navigator.clipboard?.writeText(JSON.stringify(lastOrder || {})); }} className="px-3 py-2 bg-gray-100 rounded-md text-xs">Copy Order</button>
+                  <button onClick={() => { navigator.clipboard?.writeText(JSON.stringify(lastVerify || {})); }} className="px-3 py-2 bg-gray-100 rounded-md text-xs">Copy Verify</button>
+                  <button onClick={retryVerify} className="px-3 py-2 bg-orange-50 text-[#FF6F3D] rounded-md text-xs">Retry Verify</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Transaction Success Modal */}
+          {txnModalOpen && txnDetails && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-extrabold text-[#1d2340]">Payment Successful</h3>
+                    <p className="text-sm text-gray-500 mt-1">Your payment has been received.</p>
+                  </div>
+                  <button onClick={() => setTxnModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Amount</span>
+                    <span className="font-bold">₹{Number(txnDetails.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Payment ID</span>
+                    <div className="text-xs text-right">
+                      <div className="font-mono text-[12px] text-gray-800">{txnDetails.paymentId}</div>
+                      <button onClick={() => navigator.clipboard?.writeText(txnDetails.paymentId)} className="text-[11px] text-gray-500 mt-1">Copy</button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Order ID</span>
+                    <div className="text-xs text-right">
+                      <div className="font-mono text-[12px] text-gray-800">{txnDetails.orderId}</div>
+                      <button onClick={() => navigator.clipboard?.writeText(txnDetails.orderId)} className="text-[11px] text-gray-500 mt-1">Copy</button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Date</span>
+                    <span className="text-gray-600">{txnDetails.date}</span>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex gap-2">
+                  <button onClick={() => { setTxnModalOpen(false); navigate('/wallet'); }} className="flex-1 bg-white border border-gray-200 py-3 rounded-xl text-sm font-bold">View Wallet</button>
+                  <button onClick={() => setTxnModalOpen(false)} className="flex-1 bg-[#FF6F3D] text-white py-3 rounded-xl text-sm font-extrabold">Done</button>
+                </div>
+              </div>
+            </div>
+          )}
+          <Toast show={toast.show} message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />
           <Bottomnav />
         </div>
       </div>
@@ -450,7 +615,8 @@ export default function Deposit() {
           </div>
         </div>
 
-        {/* Bottom Navigation */}
+        {/* Toast + Bottom Navigation */}
+        <Toast show={toast.show} message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />
         <Bottomnav />
 
       </div>

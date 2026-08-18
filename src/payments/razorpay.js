@@ -1,8 +1,9 @@
 import { apiFetch } from "../api/client";
 
-export async function createOrder(amount) {
-  // amount in rupees
-  return apiFetch(`/api/razorpay/order`, { method: "POST", body: { amount } });
+export async function createOrder(amount, extras = {}) {
+  // amount in rupees; extras can include { userId, appointmentId }
+  const body = { amount, ...extras };
+  return apiFetch(`/api/razorpay/order`, { method: "POST", body });
 }
 
 export async function verifyPayment(payload) {

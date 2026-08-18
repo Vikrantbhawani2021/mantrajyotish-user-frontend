@@ -1,9 +1,27 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Plus, FileText, Tag, ChevronRight, Phone, MessageCircle, Video, RefreshCw, TrendingDown, TrendingUp, Sparkles, Wallet as WalletIcon, Copy, Check, HelpCircle, X, AlertCircle, Clock } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Plus, 
+  Phone, 
+  MessageCircle, 
+  Video, 
+  TrendingDown, 
+  TrendingUp, 
+  RefreshCw, 
+  Search, 
+  ChevronRight, 
+  Copy, 
+  Check, 
+  HelpCircle, 
+  X, 
+  AlertCircle, 
+  Clock, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  Wallet as WalletIcon
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
-import walletIllustration from "../assets/wallet.webp";
-import { BACKEND_URL } from "../config/backend";
 import { getBalance, getTransactions } from "../api/wallet";
 
 const renderIcon = (type) => {
@@ -21,7 +39,22 @@ const renderIcon = (type) => {
   }
 };
 
-export default function Wallet() {
+const getIconBgColor = (type) => {
+  switch (type) {
+    case "plus":
+      return "bg-green-50 text-green-500 border border-green-100";
+    case "phone":
+      return "bg-pink-50 text-pink-500 border border-pink-100";
+    case "video":
+      return "bg-purple-50 text-purple-500 border border-purple-100";
+    case "message":
+      return "bg-blue-50 text-blue-500 border border-blue-100";
+    default:
+      return "bg-gray-50 text-gray-500 border border-gray-100";
+  }
+};
+
+export default function TransactionHistory() {
   const navigate = useNavigate();
 
   const [balance, setBalance] = useState(() => {
@@ -32,12 +65,116 @@ export default function Wallet() {
   const [txList, setTxList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [latestLocalTx, setLatestLocalTx] = useState(null);
-  const [dismissedTxId, setDismissedTxId] = useState(() => sessionStorage.getItem("dismissed_tx") || null);
-
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTab, setSelectedTab] = useState("all"); // all, deposits, deductions, failed
   const [selectedTx, setSelectedTx] = useState(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTab, searchQuery]);
+
+  const getUserInfo = () => {
+    let userId = null;
+    let phone = localStorage.getItem("phone") || null;
+    try {
+      const userObj = JSON.parse(localStorage.getItem("user") || "{}");
+      userId = userObj._id || userObj.id || userObj.userId || null;
+      if (!phone) phone = userObj.phone || null;
+    } catch {}
+    return { userId, phone };
+  };
+
+  const getToken = () => localStorage.getItem("authToken") || "";
+
+  const fetchBalanceFromBackend = useCallback(async () => {
+    const { userId, phone } = getUserInfo();
+    const token = getToken();
+    const savedLocal = parseFloat(localStorage.getItem("wallet_balance") || "0");
+
+    try {
+      const queryStr = userId 
+        ? `userId=${userId}&t=${Date.now()}` 
+        : phone 
+        ? `phone=${encodeURIComponent(phone)}&t=${Date.now()}` 
+        : `t=${Date.now()}`;
+      const res = await getBalance(queryStr);
+      if (res && res.success && res.data !== undefined) {
+        const backendBal = res.data.walletBalance ?? res.data.balance ?? 0;
+        const effectiveBal = Math.max(backendBal, savedLocal);
+        setBalance(effectiveBal);
+        localStorage.setItem("wallet_balance", effectiveBal.toFixed(2));
+      } else {
+        setBalance(savedLocal);
+      }
+    } catch (err) {
+      console.error("Balance fetch error:", err);
+      setBalance(savedLocal);
+    }
+  }, []);
+
+  const fetchTransactions = useCallback(async () => {
+    const { userId, phone } = getUserInfo();
+    const token = getToken();
+
+    let localTxs = [];
+    try {
+      const saved = localStorage.getItem("wallet_transactions");
+      if (saved) localTxs = JSON.parse(saved);
+    } catch {}
+
+    if (userId || phone || token) {
+      try {
+        const queryStr = userId 
+          ? `userId=${userId}&t=${Date.now()}` 
+          : phone 
+          ? `phone=${encodeURIComponent(phone)}&t=${Date.now()}` 
+          : `t=${Date.now()}`;
+        const data = await getTransactions(queryStr);
+        if (data && data.success && Array.isArray(data.data)) {
+          const existingIds = new Set();
+          const existingPaymentIds = new Set();
+          data.data.forEach(t => {
+            if (t.id) existingIds.add(String(t.id));
+            if (t.paymentId) existingPaymentIds.add(String(t.paymentId));
+            if (t.meta?.transactionId) existingPaymentIds.add(String(t.meta.transactionId));
+          });
+          const filteredLocal = localTxs.filter(t => {
+            const idStr = String(t.id || t.paymentId || "");
+            return !existingIds.has(idStr) && !existingPaymentIds.has(idStr);
+          });
+          const merged = [...filteredLocal, ...data.data];
+          merged.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+          setTxList(merged);
+          return;
+        }
+      } catch (err) {
+        console.error("Transactions fetch error:", err);
+      }
+    }
+
+    setTxList(localTxs);
+  }, []);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchBalanceFromBackend(), fetchTransactions()]);
+    setLoading(false);
+  }, [fetchBalanceFromBackend, fetchTransactions]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchBalanceFromBackend(), fetchTransactions()]);
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  // Copy Transaction/Payment ID
   const handleCopyId = (id) => {
     if (!id) return;
     navigator.clipboard.writeText(id);
@@ -45,6 +182,7 @@ export default function Wallet() {
     setTimeout(() => setCopiedId(false), 2000);
   };
 
+  // Helper to determine status color classes
   const getStatusBadge = (status) => {
     const normStatus = (status || "").toLowerCase();
     if (normStatus === "success" || normStatus === "completed" || normStatus === "successful") {
@@ -68,19 +206,7 @@ export default function Wallet() {
     );
   };
 
-  const isDeposit = (tx) => {
-    if (!tx) return false;
-    const titleLower = String(tx.title || "").toLowerCase();
-    const amtStr = String(tx.amount || "");
-    return (
-      tx.iconType === "plus" || 
-      titleLower.includes("added") || 
-      titleLower.includes("recharge") || 
-      amtStr.startsWith("+") ||
-      tx.type === "credit"
-    );
-  };
-
+  // Format amount to include sign
   const formatAmountText = (amount, iconType) => {
     if (amount === undefined || amount === null) return "";
     const amtStr = String(amount);
@@ -94,130 +220,51 @@ export default function Wallet() {
     return `- ₹${Math.abs(parsed).toFixed(2)}`;
   };
 
-  const getUserInfo = () => {
-    let userId = null;
-    let phone = localStorage.getItem("phone") || null;
-    try {
-      const userObj = JSON.parse(localStorage.getItem("user") || "{}");
-      userId = userObj._id || userObj.id || userObj.userId || null;
-      if (!phone) phone = userObj.phone || null;
-    } catch {}
-    return { userId, phone };
+  const isDeposit = (tx) => {
+    if (!tx) return false;
+    const titleLower = String(tx.title || "").toLowerCase();
+    const amtStr = String(tx.amount || "");
+    return (
+      tx.iconType === "plus" || 
+      titleLower.includes("added") || 
+      titleLower.includes("recharge") || 
+      amtStr.startsWith("+")
+    );
   };
 
-  const getToken = () => localStorage.getItem("authToken") || "";
+  // Filter transactions
+  const filteredTxs = txList.filter((tx) => {
+    if (!tx) return false;
+    // 1. Search Query Filter
+    const searchLower = searchQuery.toLowerCase();
+    const titleMatch = String(tx.title || "").toLowerCase().includes(searchLower);
+    const idMatch = String(tx.id || tx.paymentId || "").toLowerCase().includes(searchLower);
+    if (!titleMatch && !idMatch) return false;
 
-  const fetchBalanceFromBackend = useCallback(async () => {
-    const { userId, phone } = getUserInfo();
-    const token = getToken();
-
-    const savedLocal = parseFloat(localStorage.getItem("wallet_balance") || "0");
-
-    try {
-      const headers = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const queryStr = userId 
-        ? `userId=${userId}&t=${Date.now()}` 
-        : phone 
-        ? `phone=${encodeURIComponent(phone)}&t=${Date.now()}` 
-        : `t=${Date.now()}`;
-      const res = await getBalance(queryStr);
-      if (res && res.success && res.data !== undefined) {
-        const backendBal = res.data.walletBalance ?? res.data.balance ?? 0;
-        const effectiveBal = Math.max(backendBal, savedLocal);
-        setBalance(effectiveBal);
-        localStorage.setItem("wallet_balance", effectiveBal.toFixed(2));
-      } else {
-        setBalance(savedLocal);
-      }
-    } catch (err) {
-      console.error("Wallet balance fetch error:", err);
-      setBalance(savedLocal);
+    // 2. Tab Category Filter
+    const statusLower = String(tx.status || "").toLowerCase();
+    if (selectedTab === "deposits") {
+      return isDeposit(tx);
     }
-  }, []);
-
-  const fetchTransactions = useCallback(async () => {
-    const { userId, phone } = getUserInfo();
-    const token = getToken();
-
-    let localTxs = [];
-    try {
-      const saved = localStorage.getItem("wallet_transactions");
-      if (saved) localTxs = JSON.parse(saved);
-    } catch {}
-
-    if (userId || phone || token) {
-      try {
-        const headers = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-
-        const queryStr = userId 
-          ? `userId=${userId}&t=${Date.now()}` 
-          : phone 
-          ? `phone=${encodeURIComponent(phone)}&t=${Date.now()}` 
-          : `t=${Date.now()}`;
-        const data = await getTransactions(queryStr);
-        if (data && data.success && Array.isArray(data.data)) {
-          const existingIds = new Set();
-          const existingPaymentIds = new Set();
-          data.data.forEach(t => {
-            if (t.id) existingIds.add(String(t.id));
-            if (t.paymentId) existingPaymentIds.add(String(t.paymentId));
-            if (t.meta?.transactionId) existingPaymentIds.add(String(t.meta.transactionId));
-          });
-          const filteredLocal = localTxs.filter(t => {
-            const idStr = String(t.id || t.paymentId || "");
-            return !existingIds.has(idStr) && !existingPaymentIds.has(idStr);
-          });
-          const merged = [...filteredLocal, ...data.data];
-          merged.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-          setTxList(merged.slice(0, 10));
-          return;
-        }
-      } catch (err) {
-        console.error("Transactions fetch error:", err);
-      }
+    if (selectedTab === "deductions") {
+      return !isDeposit(tx);
+    }
+    if (selectedTab === "failed") {
+      return statusLower === "failed" || statusLower === "cancelled" || statusLower === "failure";
     }
 
-    setTxList(localTxs.slice(0, 10));
-  }, []);
-
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([fetchBalanceFromBackend(), fetchTransactions()]);
-    setLoading(false);
-  }, [fetchBalanceFromBackend, fetchTransactions]);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([fetchBalanceFromBackend(), fetchTransactions()]);
-    setRefreshing(false);
-  };
-
-  useEffect(() => {
-    loadAll();
-    // load latest local transaction for compact success summary
-    try {
-      const saved = localStorage.getItem("wallet_transactions");
-      if (saved) {
-        const arr = JSON.parse(saved);
-        if (Array.isArray(arr) && arr.length > 0) {
-          setLatestLocalTx(arr[0]);
-        }
-      }
-    } catch {}
-  }, [loadAll]);
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center">
       <div className="w-full max-w-[430px] min-h-screen bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between">
-
-        {/* Scrollable Content */}
+        
+        {/* Scrollable Main Area */}
         <div className="overflow-y-auto pb-28">
-
+          
           {/* Header */}
-          <div className="bg-white border-b border-gray-100 flex items-center justify-between px-4 py-4 sticky top-0 z-10">
+          <div className="bg-white border-b border-gray-100 flex items-center justify-between px-4 py-4 sticky top-0 z-20">
             <div className="flex items-center">
               <button
                 onClick={() => navigate(-1)}
@@ -226,12 +273,11 @@ export default function Wallet() {
                 <ArrowLeft size={24} className="text-gray-700" />
               </button>
               <div>
-                <h1 className="text-lg font-extrabold text-[#1d2340]">My Wallet</h1>
-                <p className="text-[11px] text-gray-400 font-medium">Manage your balance and transactions</p>
+                <h1 className="text-lg font-extrabold text-[#1d2340]">Transaction History</h1>
+                <p className="text-[11px] text-gray-400 font-medium">Track your wallet balance logs</p>
               </div>
             </div>
 
-            {/* Refresh Button */}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -241,157 +287,160 @@ export default function Wallet() {
             </button>
           </div>
 
-          <div className="px-4 py-4 space-y-5">
+          <div className="px-4 py-4 space-y-4">
 
-            {/* Wallet Balance Card */}
-            <div className="bg-gradient-to-br from-[#FFF2EC] to-[#FFE5D8] rounded-[28px] p-6 shadow-sm border border-[#FFF2EC] flex items-center justify-between relative overflow-hidden">
-              <div className="space-y-3.5 z-10">
-                <span className="text-xs font-bold text-gray-500 tracking-wide uppercase">Available Balance</span>
-                <div className="text-3xl font-extrabold text-[#1d2340]">
+            {/* Quick Balance Overview */}
+            <div className="bg-gradient-to-br from-[#FFF2EC] to-[#FFE5D8] rounded-[24px] p-5 border border-[#FFF2EC] flex items-center justify-between relative overflow-hidden">
+              <div className="space-y-1.5 z-10">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Current Wallet Balance</span>
+                <div className="text-2xl font-black text-[#1d2340]">
                   ₹{(balance ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                 </div>
-
-                <button
-                  onClick={() => navigate("/wallet")}
-                  className="inline-flex items-center gap-2 bg-white border border-orange-200 px-4 py-1 rounded-full shadow-sm text-sm font-bold text-[#FF6F3D] hover:bg-orange-50 transition-colors"
-                >
-                  <WalletIcon size={18} className="text-[#FF6F3D]" />  
-                                  Astro Wallet
-                </button>
               </div>
-
-             <div className="w-24 h-24 flex-shrink-0 z-10">
-                             <img
-                               src={walletIllustration}
-                               alt="Wallet"
-                               className="w-full h-full object-contain"
-                             />
-                           </div>
-
-              {/* Decorative Blur BG */}
-              <div className="absolute right-0 top-0 w-32 h-32 bg-orange-300/10 rounded-full blur-2xl pointer-events-none"></div>
-            </div>
-
-            {/* Quick Actions Row */}
-            {/* Compact success summary for the most recent local transaction */}
-            {latestLocalTx && latestLocalTx.status === "Success" && String(latestLocalTx.id) !== String(dismissedTxId) && (
-              <div className="bg-white rounded-2xl p-3 shadow-sm border border-green-100 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-gray-800">Last Transaction</div>
-                  <div className="text-xs text-gray-500">+ ₹{(parseFloat((latestLocalTx.amount || "+ ₹0").replace(/[+₹, ]/g, "")) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => { navigator.clipboard?.writeText(latestLocalTx.paymentId || latestLocalTx.id || ""); }} className="text-xs text-gray-500">Copy ID</button>
-                  <button onClick={() => { sessionStorage.setItem("dismissed_tx", latestLocalTx.id); setDismissedTxId(latestLocalTx.id); }} className="text-xs font-bold text-[#FF6F3D]">Dismiss</button>
-                </div>
-              </div>
-            )}
-            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100/50 flex justify-between items-center gap-2">
-              <button
+              <button 
                 onClick={() => navigate("/deposit")}
-                className="flex flex-col items-center gap-2 flex-1 group cursor-pointer"
+                className="z-10 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full shadow-sm text-xs font-bold text-[#FF6F3D] hover:bg-orange-50 transition-all cursor-pointer active:scale-95"
               >
-                <div className="w-11 h-11 rounded-2xl bg-[#FFF2EC] group-hover:bg-[#FFE5D8] transition-colors flex items-center justify-center text-[#FF6F3D]">
-                  <Plus size={18} strokeWidth={2.5} />
-                </div>
-                <span className="text-[10px] font-bold text-gray-600 text-center leading-tight whitespace-pre-line">
-                  Add Money
-                </span>
+                <Plus size={14} strokeWidth={3} /> Add Funds
               </button>
-
-              <button
-                onClick={() => navigate("/transaction-history")}
-                className="flex flex-col items-center gap-2 flex-1 group cursor-pointer"
-              >
-                <div className="w-11 h-11 rounded-2xl bg-[#FFF2EC] group-hover:bg-[#FFE5D8] transition-colors flex items-center justify-center text-[#FF6F3D]">
-                  <FileText size={18} strokeWidth={2.5} />
-                </div>
-                <span className="text-[10px] font-bold text-gray-600 text-center leading-tight whitespace-pre-line">
-                  Transaction{"\n"}History
-                </span>
-              </button>
-
-              <button className="flex flex-col items-center gap-2 flex-1 group cursor-pointer">
-                <div className="w-11 h-11 rounded-2xl bg-[#FFF2EC] group-hover:bg-[#FFE5D8] transition-colors flex items-center justify-center text-[#FF6F3D]">
-                  <Tag size={18} strokeWidth={2.5} />
-                </div>
-                <span className="text-[10px] font-bold text-gray-600 text-center leading-tight whitespace-pre-line">
-                  Offers &{"\n"}Coupons
-                </span>
-              </button>
+              <div className="absolute right-0 top-0 w-24 h-24 bg-orange-300/10 rounded-full blur-xl pointer-events-none"></div>
             </div>
 
-            {/* Recent Transactions */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center px-1">
-                <h2 className="font-bold text-gray-800 text-[15px]">Recent Transactions</h2>
-                <button
-                  onClick={() => navigate("/transaction-history")}
-                  className="text-[#FF6F3D] font-bold text-xs flex items-center gap-0.5 hover:underline cursor-pointer"
+            {/* Search Bar */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+                <Search size={18} />
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search description or Txn ID..."
+                className="w-full bg-white border border-gray-100 rounded-2xl pl-10 pr-4 py-3 text-sm font-medium text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300/50 shadow-sm transition-all"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery("")}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
                 >
-                  View All <ChevronRight size={14} strokeWidth={2.5} />
+                  <X size={16} />
                 </button>
-              </div>
+              )}
+            </div>
 
+            {/* Tabs Filter */}
+            <div className="flex gap-1.5 bg-white border border-gray-100/50 p-1.5 rounded-2xl shadow-sm">
+              {[
+                { id: "all", label: "All" },
+                { id: "deposits", label: "Deposits" },
+                { id: "deductions", label: "Deductions" },
+                { id: "failed", label: "Failed" }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSelectedTab(tab.id)}
+                  className={`flex-1 text-center py-2 text-xs font-extrabold rounded-xl transition-all cursor-pointer ${
+                    selectedTab === tab.id
+                      ? "bg-[#FFF2EC] text-[#FF6F3D]"
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Transactions List */}
+            <div className="space-y-2">
               {loading ? (
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100/50 p-4 space-y-4">
-                  {[1, 2, 3].map(i => (
+                  {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="flex items-center gap-3 animate-pulse">
-                      <div className="w-9 h-9 rounded-full bg-gray-200 flex-shrink-0" />
+                      <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0" />
                       <div className="flex-1 space-y-1.5">
                         <div className="h-3 w-32 bg-gray-200 rounded" />
                         <div className="h-2 w-20 bg-gray-100 rounded" />
                       </div>
-                      <div className="h-3 w-16 bg-gray-200 rounded" />
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="h-3 w-14 bg-gray-200 rounded" />
+                        <div className="h-2.5 w-10 bg-gray-100 rounded" />
+                      </div>
                     </div>
                   ))}
                 </div>
-              ) : txList.length === 0 ? (
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100/50 p-8 text-center">
-                  <FileText size={32} className="text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-400 font-medium">No transactions yet</p>
-                  <p className="text-xs text-gray-300 mt-1">Add money or start a session to see history</p>
+              ) : filteredTxs.length === 0 ? (
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100/50 p-10 text-center flex flex-col items-center justify-center">
+                  <TrendingDown size={40} className="text-gray-300 mb-3" />
+                  <p className="text-sm font-bold text-gray-500">No transactions found</p>
+                  <p className="text-xs text-gray-400 mt-1 max-w-[240px]">
+                    {searchQuery || selectedTab !== "all" 
+                      ? "Try clearing your search query or switching filters."
+                      : "Make your first deposit or request a consultation to see history."
+                    }
+                  </p>
                 </div>
               ) : (
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100/50 p-4 divide-y divide-gray-100">
-                  {txList.map((tx, idx) => (
-                    <div 
-                      key={tx.id || idx} 
-                      onClick={() => setSelectedTx(tx)}
-                      className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0 hover:bg-gray-50/50 -mx-2 px-2 rounded-2xl transition-all cursor-pointer group active:scale-[0.99]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${tx.iconBg || "bg-gray-100 text-gray-500"}`}>
-                          {renderIcon(tx.iconType)}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-sm leading-tight group-hover:text-[#FF6F3D] transition-colors">
-                            {tx.title || (String(tx.amount || "").startsWith("+") ? "Added Money" : "Consultation Session")}
-                          </h3>
-                          <p className="text-[10px] text-gray-400 mt-1 font-medium flex flex-wrap gap-x-2 gap-y-0.5 items-center">
-                            <span>{tx.date}</span>
-                            {(tx.meta?.transactionId || tx.paymentId || tx.id) && (
-                              <span className="text-gray-400 font-mono text-[9px] bg-gray-100 px-1 rounded border border-gray-100 max-w-[120px] truncate">
-                                ID: {tx.meta?.transactionId || tx.paymentId || tx.id}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                <>
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100/50 p-4 divide-y divide-gray-100/70">
+                    {filteredTxs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((tx, idx) => {
+                      const isCredit = isDeposit(tx);
+                      const formattedAmt = formatAmountText(tx.amount, tx.iconType);
+                      return (
+                        <div
+                          key={tx.id || idx}
+                          onClick={() => setSelectedTx(tx)}
+                          className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0 hover:bg-gray-50/50 -mx-2 px-2 rounded-2xl transition-all cursor-pointer group active:scale-[0.99]"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${getIconBgColor(tx.iconType)}`}>
+                              {renderIcon(tx.iconType)}
+                            </div>
+                            <div>
+                              <h3 className="font-extrabold text-gray-800 text-sm leading-tight group-hover:text-[#FF6F3D] transition-colors">
+                                {tx.title || (isCredit ? "Added Money" : "Consultation Session")}
+                              </h3>
+                              <p className="text-[10px] text-gray-400 mt-1 font-medium flex items-center gap-1.5">
+                                {tx.date}
+                              </p>
+                            </div>
+                          </div>
 
-                      <div className="text-right">
-                        <div className={`font-bold text-sm ${
-                          String(tx.amount || "").startsWith("+") || tx.iconType === "plus" || tx.type === "credit"
-                            ? "text-green-600"
-                            : "text-red-500"
-                        }`}>
-                          {tx.amount}
+                          <div className="text-right flex flex-col items-end justify-center">
+                            <div className={`font-black text-sm ${isCredit ? "text-green-600" : "text-red-500"}`}>
+                              {formattedAmt}
+                            </div>
+                            <div className="mt-1">
+                              {getStatusBadge(tx.status)}
+                            </div>
+                          </div>
                         </div>
-                        <div className={`text-[10px] font-bold mt-1 ${tx.statusClass || "text-gray-400"}`}>{tx.status}</div>
-                      </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {Math.ceil(filteredTxs.length / PAGE_SIZE) > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 bg-white rounded-2xl border border-gray-100/50 shadow-xs mt-3">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="px-3.5 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer transition-colors active:scale-95"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-xs font-bold text-gray-500">
+                        Page {currentPage} of {Math.ceil(filteredTxs.length / PAGE_SIZE)}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(p + 1, Math.ceil(filteredTxs.length / PAGE_SIZE)))}
+                        disabled={currentPage === Math.ceil(filteredTxs.length / PAGE_SIZE)}
+                        className="px-3.5 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer transition-colors active:scale-95"
+                      >
+                        Next
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -434,9 +483,7 @@ export default function Wallet() {
                 <h2 className="text-2xl font-black text-gray-800">
                   {formatAmountText(selectedTx.amount, selectedTx.iconType)}
                 </h2>
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">
-                  {selectedTx.title || (isDeposit(selectedTx) ? "Added Money" : "Consultation Session")}
-                </p>
+                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">{selectedTx.title}</p>
               </div>
 
               {/* Receipt Body */}
@@ -490,7 +537,7 @@ export default function Wallet() {
               {/* Action Buttons */}
               <div className="flex flex-col gap-2 pt-2">
                 <button
-                  onClick={() => { setSelectedTx(null); navigate("/help-support"); }}
+                  onClick={() => navigate("/help-support")}
                   className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98"
                 >
                   <HelpCircle size={16} /> Need help with this payment?

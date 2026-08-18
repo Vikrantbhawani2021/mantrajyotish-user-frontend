@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowLeft, MoreVertical, Send, CheckCheck, Plus, Calendar, AlertTriangle, Clock, Wallet } from "lucide-react";
+import { ArrowLeft, MoreVertical, Send, CheckCheck, Plus, Calendar, AlertTriangle, Clock, Wallet, ChevronUp, ChevronDown, User, MapPin, Star, PhoneOff, Copy } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
@@ -38,6 +38,9 @@ export default function ChatSession() {
     price: "₹15/min",
     priceRaw: 15,
     image: "https://randomuser.me/api/portraits/women/65.jpg",
+    skill: "Vedic Astrology, Kundli, Tarot Reading",
+    exp: "8 Years",
+    rating: "4.9",
   };
 
   const sessionId = location.state?.sessionId;
@@ -46,15 +49,83 @@ export default function ChatSession() {
 
   const [messages, setMessages] = useState([]);
   const [showDobModal, setShowDobModal] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [tempDob, setTempDob] = useState(() => {
-    return localStorage.getItem("dob") || "14/08/2001";
+    const localDob = localStorage.getItem("dob");
+    if (localDob) return localDob;
+
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        if (u.dateofbirth) {
+          const dobDate = new Date(u.dateofbirth);
+          if (!isNaN(dobDate.getTime())) {
+            const d = String(dobDate.getDate()).padStart(2, "0");
+            const m = String(dobDate.getMonth() + 1).padStart(2, "0");
+            const y = dobDate.getFullYear();
+            return `${d}/${m}/${y}`;
+          }
+        }
+      } catch {}
+    }
+    return "14/08/2001";
   });
+
+  // Fetch real profile DOB on mount to confirm latest value from DB
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
+
+    const fetchRealDob = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/user/profile`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const res = await response.json();
+          if (res && res.success && res.data) {
+            localStorage.setItem("user", JSON.stringify(res.data));
+            if (res.data.dateofbirth) {
+              const dobDate = new Date(res.data.dateofbirth);
+              if (!isNaN(dobDate.getTime())) {
+                const d = String(dobDate.getDate()).padStart(2, "0");
+                const m = String(dobDate.getMonth() + 1).padStart(2, "0");
+                const y = dobDate.getFullYear();
+                const newDob = `${d}/${m}/${y}`;
+                setTempDob(newDob);
+                localStorage.setItem("dob", newDob);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch fresh user profile DOB:", err);
+      }
+    };
+
+    fetchRealDob();
+  }, []);
+
+  const cleanSessionId = typeof sessionId === "string"
+    ? sessionId
+    : (sessionId?._id || sessionId?.sessionId || sessionId?.id || "");
 
   const [inputMessage, setInputMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionStatus, setSessionStatus] = useState("PENDING"); // PENDING, ACTIVE, COMPLETED
-  const [remainingBalance, setRemainingBalance] = useState(null);
+  const [remainingBalance, setRemainingBalance] = useState(() => {
+    const saved = localStorage.getItem("wallet_balance");
+    return saved ? parseFloat(saved) : 0;
+  });
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
+  const [prevBalance, setPrevBalance] = useState(null);
+  const [balanceChangeText, setBalanceChangeText] = useState(null);
+
   const [showWarning, setShowWarning] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
@@ -63,8 +134,68 @@ export default function ChatSession() {
   const [review, setReview] = useState("");
   const [submittingRate, setSubmittingRate] = useState(false);
 
+  // Increments seconds counter every second when status is ACTIVE
+  useEffect(() => {
+    if (sessionStatus !== "ACTIVE") return;
+    const timer = setInterval(() => {
+      setSecondsElapsed((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [sessionStatus]);
+
+  // Fetch the latest wallet balance on mount
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
+    const fetchBalance = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/wallet/balance`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const res = await response.json();
+          if (res && res.success && res.data !== undefined) {
+            const bal = res.data.walletBalance ?? res.data.balance ?? 0;
+            setRemainingBalance(bal);
+            localStorage.setItem("wallet_balance", Number(bal).toFixed(2));
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch wallet balance on mount:", err);
+      }
+    };
+    fetchBalance();
+  }, []);
+
+  // Monitor balance decreases for animation text
+  useEffect(() => {
+    if (prevBalance !== null && remainingBalance < prevBalance) {
+      const diff = prevBalance - remainingBalance;
+      if (diff >= 0.5) {
+        setBalanceChangeText(`-₹${Math.round(diff)}`);
+        const timer = setTimeout(() => {
+          setBalanceChangeText(null);
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+    setPrevBalance(remainingBalance);
+  }, [remainingBalance, prevBalance]);
+
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const isScrolledUp = scrollHeight - scrollTop - clientHeight > 300;
+    setShowScrollBottom(isScrolledUp);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -224,6 +355,12 @@ export default function ChatSession() {
     socket.on("chat_accepted", (data) => {
       console.log("💬 Chat request accepted by astrologer:", data);
       setSessionStatus("ACTIVE");
+      if (data?.session?.startTime) {
+        const start = new Date(data.session.startTime).getTime();
+        const now = Date.now();
+        const diffSeconds = Math.max(Math.floor((now - start) / 1000), 0);
+        setSecondsElapsed(diffSeconds);
+      }
     });
 
     socket.on("chat_request_created", (data) => {
@@ -243,14 +380,14 @@ export default function ChatSession() {
       setSessionStatus("ACTIVE");
     });
 
-    socket.on("chat_accepted", () => {
-      setSessionStatus("ACTIVE");
-    });
-
     socket.on("timer_tick", (data) => {
       setSessionStatus("ACTIVE");
       setRemainingBalance(data.remainingBalance);
       setElapsedMinutes(data.elapsedMinutes);
+      const seconds = data.elapsedSeconds !== undefined 
+        ? data.elapsedSeconds 
+        : (data.elapsedMinutes || 0) * 60;
+      setSecondsElapsed(seconds);
     });
 
     // Wallet warning (1 minute remaining)
@@ -434,6 +571,10 @@ export default function ChatSession() {
       }
     ]);
     setInputMessage("");
+    if (inputRef.current) {
+      inputRef.current.style.height = "36px";
+      inputRef.current.style.overflowY = "hidden";
+    }
   };
 
   const handleImageUpload = async (e) => {
@@ -522,66 +663,113 @@ export default function ChatSession() {
     }
   };
 
+  const formatTime = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center">
-      <div className="w-full max-w-[430px] h-screen bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between overflow-hidden">
+      <div className="w-full max-w-[850px] h-screen bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between overflow-hidden">
         
         {/* Chat Header */}
-        <div className="bg-white border-b border-gray-100 flex items-center justify-between px-4 py-3 sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => {
-                if (sessionStatus === "ACTIVE") {
-                  setShowConfirmEnd(true);
-                } else {
-                  navigate("/chat");
-                }
-              }}
-              className="p-1 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
-            >
-              <ArrowLeft size={24} className="text-gray-700" />
-            </button>
-            
-            <div className="relative">
-              <img
-                src={astrologer.image}
-                alt={astrologer.name}
-                className="w-10 h-10 rounded-full object-cover"
-              />
-              <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
-            </div>
+        <div className="bg-gradient-to-r from-[#ff8f6c] to-[#ff5c33] border-b border-orange-500/20 px-3 py-3 sticky top-0 z-20 text-white shadow-md">
+          <div className="max-w-[520px] mx-auto w-full flex items-center justify-between">
+            <div className="flex items-center gap-2 max-w-[50%]">
+              <div className="relative flex-shrink-0">
+                <img
+                  src={astrologer.image}
+                  alt={astrologer.name}
+                  className="w-10 h-10 rounded-full object-cover border border-white/20"
+                />
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#ff8f6c] rounded-full"></span>
+              </div>
 
-            <div>
-              <h2 className="font-bold text-[#1d2340] text-base leading-tight">
-                {astrologer.name}
-              </h2>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                <span className="text-xs text-gray-500">
-                  {sessionStatus === "PENDING" ? "Connecting..." : `Session Active (${elapsedMinutes} min)`}
-                </span>
+              <div className="min-w-0">
+                <h2 className="font-bold text-white text-xs md:text-sm leading-tight truncate">
+                  {astrologer.name}
+                </h2>
+                <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                  <span className="text-[9px] text-orange-100 font-bold uppercase tracking-wide truncate">
+                    Online
+                  </span>
+                  <span className="text-[9px] text-orange-200/80">•</span>
+                  <span className="text-[9px] text-orange-100 font-bold truncate">
+                    Rate: {astrologer.price}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {remainingBalance !== null && (
-              <div className="flex items-center gap-1 bg-orange-50 border border-orange-100 px-2 py-1.5 rounded-xl text-orange-600">
-                <Wallet size={12} />
-                <span className="text-[10px] font-bold">₹{Math.floor(remainingBalance)}</span>
+            {/* Time Elapsed Center Badge */}
+            {sessionStatus === "ACTIVE" && (
+              <div className="flex flex-col items-center justify-center text-center flex-shrink-0">
+                <div className="flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded-full text-white font-mono text-[10px] font-medium border border-white/5">
+                  <Clock size={10} className="opacity-95" />
+                  <span>{formatTime(secondsElapsed)}</span>
+                </div>
+                <span className="text-[7px] text-orange-100/80 font-bold uppercase mt-0.5 tracking-wide">Time Elapsed</span>
               </div>
             )}
-            <span className="bg-[#FF6F3D] text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
-              {astrologer.price}
-            </span>
+
+            {/* Right Wallet & End call Section */}
+            <div className="flex items-center gap-1.5 relative flex-shrink-0">
+              {balanceChangeText && (
+                <span className="absolute right-24 -bottom-1 text-xs font-black text-red-200 animate-float-up-fade">
+                  {balanceChangeText}
+                </span>
+              )}
+              {remainingBalance !== null && (
+                <div 
+                  className="flex items-center gap-2 bg-white rounded-xl px-2 py-0.5 border border-white/80 shadow-xs relative h-8 pr-6"
+                >
+                  <div className="flex flex-col items-start">
+                    <div className="flex items-center gap-0.5 text-gray-800 text-[10px] font-medium leading-none">
+                      <Wallet size={9} className="text-gray-400" />
+                      <span>₹{Number(remainingBalance).toFixed(2)}</span>
+                    </div>
+                    <span className="text-[6px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Wallet Balance</span>
+                  </div>
+                  <button
+                    onClick={() => navigate("/deposit")}
+                    className="w-4 h-4 bg-[#FF6F3D] hover:bg-[#e05e30] text-white flex items-center justify-center rounded-full cursor-pointer absolute right-1 top-1/2 -translate-y-1/2 shadow-xs transition-colors active:scale-90"
+                  >
+                    <Plus size={8} strokeWidth={3.5} />
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => setShowConfirmEnd(true)}
+                className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center cursor-pointer active:scale-95 transition-all shadow-md shadow-red-600/10 flex-shrink-0"
+              >
+                <PhoneOff size={14} strokeWidth={2.5} />
+              </button>
+            </div>
           </div>
         </div>
-
+        
         {/* Low balance warning banner */}
         {showWarning && (
-          <div className="bg-red-50 border-b border-red-100 text-red-700 px-4 py-2 text-xs flex items-center gap-2 animate-pulse z-10">
-            <AlertTriangle size={14} className="text-red-500" />
-            <span>Warning: Insufficient wallet balance. Chat will automatically end in 1 minute.</span>
+          <div className="mx-3 my-2 bg-[#FFF2EC] border border-[#ffe0d1] rounded-2xl p-3 flex items-center justify-between shadow-2xs animate-fade-in z-10">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0 text-[#FF6F3D]">
+                <Wallet size={16} />
+              </div>
+              <div>
+                <h4 className="text-[11px] font-extrabold text-gray-800">Low Wallet Balance</h4>
+                <p className="text-[9px] text-gray-400 mt-0.5 leading-normal">
+                  You have <span className="font-bold text-[#FF6F3D]">₹{Number(remainingBalance).toFixed(2)}</span> remaining.
+                  <br />Add money to continue uninterrupted.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate("/deposit")}
+              className="bg-[#FF6F3D] hover:bg-[#e05e30] text-white text-[9px] font-black px-2.5 py-1.5 rounded-xl active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-0.5"
+            >
+              <Plus size={8} strokeWidth={3} /> Add Money
+            </button>
           </div>
         )}
 
@@ -606,9 +794,118 @@ export default function ChatSession() {
             </button>
           </div>
         )}
+          {/* Astrologer Profile & Details Card */}
+        {sessionStatus !== "PENDING" && (
+          <div className={`bg-white border-l border-r border-gray-100 shadow-sm text-xs z-30 relative transition-all ${detailsOpen ? "rounded-b-none border-b-0" : "rounded-b-3xl border-b"}`}>
+            <div 
+              onClick={() => setDetailsOpen(!detailsOpen)}
+              className="flex items-center justify-between cursor-pointer p-4.5 pb-3"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-[#FFF2EC] flex items-center justify-center text-[#FF6F3D]">
+                  <Star size={14} className="fill-[#FF6F3D]" />
+                </div>
+                <span className="font-medium text-[#FF6F3D] text-[10px] uppercase tracking-wider">
+                  Astrologer Profile & Details
+                </span>
+              </div>
+              <button className="text-gray-400 p-1 rounded-full hover:bg-gray-50 cursor-pointer">
+                {detailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+
+            {detailsOpen && (
+              <div className="space-y-4 animate-fade-in pt-1 px-4.5 pb-4.5">
+                {/* 2x2 grid of details */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 border border-gray-100/50 flex-shrink-0">
+                      <Clock size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[8px] text-gray-400 font-normal uppercase tracking-wider">Experience</div>
+                      <div className="text-xs font-medium text-gray-800 mt-0.5">
+                        {astrologer.exp || "8 Years"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-amber-500 border border-gray-100/50 flex-shrink-0">
+                      <Star size={14} className="text-amber-500 fill-amber-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[8px] text-gray-400 font-normal uppercase tracking-wider">Rating</div>
+                      <div className="text-xs font-medium text-gray-800 mt-0.5">
+                        {astrologer.rating || "4.9"} ★
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 border border-gray-100/50 flex-shrink-0">
+                      <User size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[8px] text-gray-400 font-normal uppercase tracking-wider">Specialization</div>
+                      <div className="text-xs font-medium text-gray-800 mt-0.5 leading-relaxed break-words">
+                        {astrologer.skill || "Vedic Astrology, Kundli, Tarot Reading"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Consultation Price */}
+                <div className="bg-[#FFF2EC] border border-[#ffe0d1] rounded-2xl p-3 flex items-center gap-2.5">
+                  <Wallet size={14} className="text-[#FF6F3D] flex-shrink-0" />
+                  <div>
+                    <div className="text-[8px] text-[#FF6F3D]/80 font-normal uppercase tracking-wider">Consultation Price</div>
+                    <div className="text-xs font-medium text-gray-800 mt-0.5">{astrologer.price}</div>
+                  </div>
+                </div>
+
+                {/* Session ID display */}
+                <div className="flex justify-between items-center bg-[#FAFAFA] border border-gray-100 rounded-2xl px-3 py-2 text-[10px]">
+                  <span className="text-gray-400 font-normal">Session ID</span>
+                  <div className="flex items-center gap-1.5 bg-white border border-gray-100 px-2 py-0.5 rounded-lg shadow-2xs">
+                    <span className="font-mono text-gray-600 select-all" title={cleanSessionId}>{cleanSessionId || "N/A"}</span>
+                    <button 
+                      onClick={() => {
+                        if (cleanSessionId) {
+                          navigator.clipboard.writeText(cleanSessionId);
+                          alert("Session ID copied!");
+                        }
+                      }}
+                      className="text-gray-400 hover:text-gray-600 cursor-pointer p-0.5 rounded"
+                    >
+                      <Copy size={10} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Messages Body */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#FAFAFA]">
+        <div 
+          ref={chatContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#FAFAFA] relative"
+        >
+          {showScrollBottom && (
+            <button 
+              type="button"
+              onClick={scrollToBottom}
+              className="absolute bottom-6 right-6 z-40 bg-white text-[#FF6F3D] hover:bg-gray-50 border border-gray-200 p-2 rounded-full shadow-md flex items-center justify-center cursor-pointer transition-all active:scale-90"
+              title="Scroll to Bottom"
+            >
+              <ChevronDown size={18} strokeWidth={3} />
+            </button>
+          )}
+          
+
+
           {messages.length > 0 && (
             <div className="flex justify-center my-4">
               <span className="bg-gray-200/60 text-gray-600 text-xs px-4 py-1 rounded-full font-medium">
@@ -622,24 +919,17 @@ export default function ChatSession() {
             return (
               <div
                 key={msg.id}
-                className={`flex gap-3 max-w-[85%] ${
-                  isAstrologer ? "mr-auto" : "ml-auto flex-row-reverse"
+                className={`flex w-full ${
+                  isAstrologer ? "justify-start" : "justify-end"
                 }`}
               >
-                {isAstrologer && (
-                  <img
-                    src={astrologer.image}
-                    alt={astrologer.name}
-                    className="w-8 h-8 rounded-full object-cover mt-1 self-start flex-shrink-0"
-                  />
-                )}
-                
                 <div
-                  className={`p-3 rounded-2xl shadow-sm relative ${
+                  className={`p-3 rounded-2xl shadow-sm relative max-w-[85%] ${
                     isAstrologer
-                      ? "bg-white text-gray-800 rounded-tl-none border border-gray-100"
-                      : "bg-[#FFF2EC] text-gray-800 rounded-tr-none"
+                      ? "bg-white text-gray-800 rounded-bl-none border border-gray-100"
+                      : "bg-gradient-to-r from-[#ff8f6c] to-[#ff5c33] text-white rounded-br-none font-medium"
                   }`}
+                  style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
                 >
                   {msg.image ? (
                     <img
@@ -648,17 +938,17 @@ export default function ChatSession() {
                       className="max-w-[200px] max-h-[200px] rounded-lg object-cover mb-1"
                     />
                   ) : (
-                    <p className="text-[14px] leading-relaxed whitespace-pre-line">
+                    <p className={`text-[14px] leading-relaxed whitespace-pre-line break-words ${isAstrologer ? "text-gray-800" : "text-white"}`} style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
                       {msg.text}
                     </p>
                   )}
                   
                   <div className="flex items-center justify-end gap-1 mt-1">
-                    <span className="text-[10px] text-gray-400">
+                    <span className={`text-[10px] ${isAstrologer ? "text-gray-400" : "text-orange-100/90"}`}>
                       {msg.time}
                     </span>
                     {!isAstrologer && (
-                      <CheckCheck size={14} className={msg.status === "read" ? "text-[#FF6F3D]" : "text-gray-400"} />
+                      <CheckCheck size={14} className={msg.status === "read" ? "text-white" : "text-orange-200/60"} />
                     )}
                   </div>
                 </div>
@@ -673,7 +963,7 @@ export default function ChatSession() {
           onSubmit={handleSendMessage}
           className="p-4 bg-[#FAFAFA] border-t border-gray-100 flex items-center sticky bottom-0"
         >
-          <div className="flex-1 bg-white rounded-full shadow-md border border-gray-200/60 p-1.5 pl-2 pr-2 flex items-center">
+          <div className="flex-1 bg-white rounded-2xl shadow-md border border-gray-200/60 p-1.5 pl-2 pr-2 flex items-end">
             <label
               htmlFor="image-upload"
               className="w-9 h-9 rounded-full bg-[#FFF2EC] hover:bg-[#ffe5d9] flex items-center justify-center text-[#FF6F3D] cursor-pointer active:scale-95 transition-all flex-shrink-0"
@@ -693,16 +983,30 @@ export default function ChatSession() {
               disabled={loading}
             />
 
-            <input
-              type="text"
+            <textarea
+              ref={inputRef}
               placeholder="Type a message..."
               value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              className="flex-1 outline-none text-sm bg-transparent placeholder-gray-400 ml-3"
+              rows={1}
+              onChange={(e) => {
+                setInputMessage(e.target.value);
+                e.target.style.height = "36px";
+                const newHeight = Math.min(e.target.scrollHeight, 100);
+                e.target.style.height = `${newHeight}px`;
+                e.target.style.overflowY = e.target.scrollHeight > 100 ? "auto" : "hidden";
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage(e);
+                }
+              }}
+              className="flex-1 outline-none text-sm bg-transparent placeholder-gray-400 ml-3 resize-none max-h-[100px] py-1.5 text-gray-800"
+              style={{ height: "36px", minHeight: "36px", lineHeight: "24px", overflowY: "hidden" }}
             />
             <button
               type="submit"
-              className="ml-2 w-9 h-9 rounded-full bg-[#FF6F3D] hover:bg-[#e05e30] flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-md shadow-orange-500/20"
+              className="ml-2 w-9 h-9 rounded-full bg-[#FF6F3D] hover:bg-[#e05e30] flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-md shadow-orange-500/20 flex-shrink-0"
             >
               <Send size={16} className="fill-white translate-x-[1px]" />
             </button>
@@ -816,6 +1120,12 @@ export default function ChatSession() {
               
               <div className="w-full bg-[#FAFAFA] rounded-2xl p-4 space-y-3 mt-5 border border-gray-100">
                 <div className="flex justify-between text-xs text-gray-500">
+                  <span>Session ID</span>
+                  <span className="font-mono text-gray-600 select-all" title={cleanSessionId}>
+                    {cleanSessionId || "N/A"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
                   <span>Consultant</span>
                   <span className="font-semibold text-gray-800">{astrologer.name}</span>
                 </div>
@@ -898,6 +1208,19 @@ export default function ChatSession() {
           }
           .animate-spin-slow {
             animation: spin 3s linear infinite;
+          }
+          @keyframes floatUpFade {
+            0% {
+              opacity: 1;
+              transform: translateY(0px) scale(1);
+            }
+            100% {
+              opacity: 0;
+              transform: translateY(-28px) scale(0.85);
+            }
+          }
+          .animate-float-up-fade {
+            animation: floatUpFade 1.5s forwards ease-out;
           }
         `}</style>
 

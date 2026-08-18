@@ -5,8 +5,9 @@ import Bottomnav from "../component/Bottomnav";
 import walletIllustration from "../assets/wallet.webp";
 import { BACKEND_URL } from "../config/backend";
 import { getBalance, addFunds } from "../api/wallet";
+import { createOrder, verifyPayment, loadRazorpayScript } from "../payments/razorpay";
 
-const quickAmounts = [100, 500, 1000, 2000, 5000];
+const quickAmounts = [100, 250, 500, 1000, 2000, 5000];
 
 const paymentMethods = [
   {
@@ -164,6 +165,114 @@ export default function Deposit() {
     }
   };
 
+  const handleRazorpay = async () => {
+    const amt = parseFloat(inputAmount);
+    if (isNaN(amt) || amt <= 0) {
+      alert("Please enter a valid amount to deposit.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let orderRes;
+      try {
+        orderRes = await createOrder(amt);
+      } catch (err) {
+        console.error("createOrder error:", err);
+        const serverMsg = err?.data?.message || err?.message || JSON.stringify(err?.data || err);
+        alert("Order creation failed: " + serverMsg);
+        return;
+      }
+
+      if (!orderRes || !orderRes.success) {
+        const msg = orderRes?.message || JSON.stringify(orderRes?.data || orderRes) || "Failed to create order. Try again.";
+        alert("Order creation failed: " + msg);
+        return;
+      }
+
+      const { order, keyId } = orderRes.data || {};
+      if (!order || !keyId) {
+        alert("Invalid order response from server.");
+        return;
+      }
+
+      await loadRazorpayScript();
+
+      const options = {
+        key: keyId,
+        amount: order.amount, // amount in paise
+        currency: order.currency || "INR",
+        name: "Astro Wallet",
+        description: `Add ₹${amt} to wallet`,
+        order_id: order.id,
+        handler: async function (response) {
+            try {
+              const verifyRes = await verifyPayment({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                amount: amt
+              });
+
+              if (verifyRes && verifyRes.success) {
+                // Refresh local balance from server
+                try {
+                  const balRes = await getBalance();
+                  const backendBal = balRes?.data?.walletBalance ?? balRes?.data?.balance ?? 0;
+                  setBalance(backendBal);
+                  localStorage.setItem("wallet_balance", Number(backendBal).toFixed(2));
+                } catch (e) {
+                  console.warn("Failed to refresh balance after verify:", e);
+                }
+                alert("Payment successful and wallet credited.");
+              } else {
+                const serverMsg = verifyRes?.message || JSON.stringify(verifyRes?.data || verifyRes) || "Verification failed. Please contact support.";
+                alert(serverMsg);
+              }
+            } catch (err) {
+              console.error("Verification error:", err);
+              const serverMsg = err?.data?.message || err?.message || JSON.stringify(err?.data || err);
+              alert("Verification failed: " + serverMsg);
+            }
+        },
+        prefill: {
+          contact: localStorage.getItem("phone")?.replace(/^\+/, "") || undefined
+        },
+        theme: { color: "#FF6F3D" }
+      };
+
+      console.debug("Razorpay order response:", orderRes);
+      console.debug("Opening Razorpay checkout with options:", options);
+
+      const rzp = new window.Razorpay(options);
+
+      // Log and surface failed payments for easier debugging
+      try {
+        rzp.on && rzp.on("payment.failed", function (resp) {
+          console.error("Razorpay payment.failed:", resp);
+          const err = resp?.error || {};
+          const errMsg = err.description || err.reason || err.code || JSON.stringify(err);
+          // Provide a helpful hint when international cards are blocked
+          if ((errMsg || "").toString().toLowerCase().includes("international")) {
+            alert("Payment failed: International cards are not supported by your Razorpay account. Use a domestic/test card or enable international cards in Razorpay Dashboard.");
+          } else {
+            alert("Payment failed: " + errMsg);
+          }
+        });
+      } catch (e) {
+        console.warn("Could not attach payment.failed handler", e);
+      }
+
+      rzp.open();
+
+    } catch (err) {
+      console.error("Razorpay flow error:", err);
+      alert(err.message || "Payment initialization failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Success Screen View
   if (success) {
     return (
@@ -221,13 +330,13 @@ export default function Deposit() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center">
-      <div className="w-full max-w-[430px] min-h-screen bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between">
+      <div className="w-full max-w-[430px] h-screen bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between overflow-hidden">
 
-        {/* Scrollable Content */}
-        <div className="overflow-y-auto pb-28">
+        {/* Main Content (fits above Bottomnav) */}
+        <div className="flex-1">
 
           {/* Header */}
-          <div className="bg-white border-b border-gray-100 flex items-center justify-between px-4 py-4 sticky top-0 z-10">
+          <div className="bg-white border-b border-gray-100 flex items-center justify-between px-4 py-3 sticky top-0 z-10">
             <div className="flex items-center">
               <button
                 onClick={() => navigate(-1)}
@@ -242,15 +351,15 @@ export default function Deposit() {
               onClick={() => navigate("/wallet")}
               className="inline-flex items-center gap-2 bg-white border border-orange-200 px-3.5 py-1 rounded-full shadow-sm text-sm font-bold text-[#FF6F3D] hover:bg-orange-50 transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF6F3D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 3v4"></path><path d="M8 3v4"></path></svg>
+              <WalletIcon size={18} className="text-[#FF6F3D]" />
               Astro Wallet
             </button>
           </div>
 
-          <div className="px-4 py-4 space-y-5">
+          <div className="px-4 py-3 space-y-4">
 
             {/* Balance Card */}
-            <div className="bg-gradient-to-br from-[#FFF2EC] to-[#FFE5D8] rounded-[28px] p-6 shadow-sm border border-[#FFF2EC] flex items-center justify-between relative overflow-hidden">
+            <div className="bg-gradient-to-br from-[#FFF2EC] to-[#FFE5D8] rounded-[28px] p-4 shadow-sm border border-[#FFF2EC] flex items-center justify-between relative overflow-hidden">
               <div className="space-y-2 z-10">
                 <span className="text-xs font-bold text-gray-500 tracking-wide uppercase">Current Balance</span>
                 <div className="text-3xl font-extrabold text-[#1d2340]">
@@ -258,7 +367,7 @@ export default function Deposit() {
                 </div>
               </div>
 
-              <div className="w-24 h-24 flex-shrink-0 z-10">
+              <div className="w-16 h-16 flex-shrink-0 z-10">
                 <img
                   src={walletIllustration}
                   alt="Wallet"
@@ -267,17 +376,17 @@ export default function Deposit() {
               </div>
             </div>
 
-            {/* Quick Amount Section */}
+            {/* Quick Amount Section (2 rows x 3 cols) */}
             <div className="space-y-2.5">
               <h2 className="font-bold text-gray-800 text-[14px] px-1">Quick Amount</h2>
-              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <div className="grid grid-cols-3 gap-3">
                 {quickAmounts.map((amount) => {
                   const isSelected = inputAmount === amount.toString();
                   return (
                     <button
                       key={amount}
                       onClick={() => setInputAmount(amount.toString())}
-                      className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${
+                      className={`w-full py-2 rounded-xl border text-sm font-bold transition-all cursor-pointer flex items-center justify-center ${
                         isSelected
                           ? "border-[#FF6F3D] bg-[#FFF2EC] text-[#FF6F3D] shadow-sm"
                           : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
@@ -293,7 +402,7 @@ export default function Deposit() {
             {/* Enter Amount Section */}
             <div className="space-y-2.5">
               <h2 className="font-bold text-gray-800 text-[14px] px-1">Enter Amount</h2>
-              <div className="relative bg-white rounded-2xl shadow-sm border border-gray-200/60 p-4 flex items-center">
+              <div className="relative bg-white rounded-2xl shadow-sm border border-gray-200/60 p-3 flex items-center">
                 <span className="text-lg font-bold text-gray-500 mr-2">₹</span>
                 <input
                   type="number"
@@ -308,58 +417,22 @@ export default function Deposit() {
               </p>
             </div>
 
-            {/* Payment Methods */}
-            <div className="space-y-2.5">
-              <h2 className="font-bold text-gray-800 text-[14px] px-1">Select Payment Method</h2>
-
-              <div className="space-y-3">
-                {paymentMethods.map((method) => {
-                  const isSelected = selectedMethod === method.id;
-                  return (
-                    <div
-                      key={method.id}
-                      onClick={() => setSelectedMethod(method.id)}
-                      className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer flex items-center justify-between shadow-sm ${
-                        isSelected ? "border-[#FF6F3D]" : "border-gray-100 hover:border-gray-200"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${method.iconBg}`}>
-                          {method.icon}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-sm leading-tight">{method.title}</h3>
-                          <p className="text-[10px] text-gray-400 mt-1 font-medium">{method.description}</p>
-                        </div>
-                      </div>
-
-                      {/* Radio button */}
-                      <div className="flex items-center">
-                        {isSelected ? (
-                          <div className="w-5 h-5 rounded-full border-2 border-[#FF6F3D] flex items-center justify-center">
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#FF6F3D]"></div>
-                          </div>
-                        ) : (
-                          <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Payment options are shown in Razorpay Checkout; UI shortcuts removed */}
 
             {/* Secure Payment Info */}
-            <div className="bg-gray-100/70 border border-gray-200/20 rounded-2xl p-3.5 flex items-center gap-2.5 justify-center">
+            <div className="bg-gray-100/70 border border-gray-200/20 rounded-2xl p-2.5 flex items-center gap-2 justify-center">
               <ShieldCheck size={18} className="text-gray-500" />
               <span className="text-[10px] font-bold text-gray-500">Your payments are secure and encrypted</span>
             </div>
 
             {/* Action Proceed Button */}
             <button
-              onClick={handleDeposit}
+              onClick={() => {
+                // Use Razorpay checkout for real payments
+                handleRazorpay();
+              }}
               disabled={loading}
-              className="w-full bg-[#FF6F3D] hover:bg-[#e05e30] py-4 rounded-2xl text-white font-extrabold text-sm shadow-md shadow-orange-500/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full bg-[#FF6F3D] hover:bg-[#e05e30] py-3 rounded-2xl text-white font-extrabold text-sm shadow-md shadow-orange-500/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>

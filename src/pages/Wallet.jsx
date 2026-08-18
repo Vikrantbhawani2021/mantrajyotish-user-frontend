@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Plus, FileText, Tag, ChevronRight, Phone, MessageCircle, Video, RefreshCw, TrendingDown, TrendingUp, Sparkles } from "lucide-react";
+import { ArrowLeft, Plus, FileText, Tag, ChevronRight, Phone, MessageCircle, Video, RefreshCw, TrendingDown, TrendingUp, Sparkles, Wallet as WalletIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import walletIllustration from "../assets/wallet.webp";
@@ -167,18 +167,18 @@ export default function Wallet() {
                   onClick={() => navigate("/wallet")}
                   className="inline-flex items-center gap-2 bg-white border border-orange-200 px-4 py-1 rounded-full shadow-sm text-sm font-bold text-[#FF6F3D] hover:bg-orange-50 transition-colors"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF6F3D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 3v4"></path><path d="M8 3v4"></path></svg>
-                  Astro Wallet
+                  <WalletIcon size={18} className="text-[#FF6F3D]" />  
+                                  Astro Wallet
                 </button>
               </div>
 
-              <div className="w-28 h-28 flex-shrink-0 z-10">
-                <img
-                  src={walletIllustration}
-                  alt="Wallet Illustration"
-                  className="w-full h-full object-contain"
-                />
-              </div>
+             <div className="w-24 h-24 flex-shrink-0 z-10">
+                             <img
+                               src={walletIllustration}
+                               alt="Wallet"
+                               className="w-full h-full object-contain"
+                             />
+                           </div>
 
               {/* Decorative Blur BG */}
               <div className="absolute right-0 top-0 w-32 h-32 bg-orange-300/10 rounded-full blur-2xl pointer-events-none"></div>

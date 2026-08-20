@@ -171,7 +171,17 @@ export default function AstroHistory() {
             </div>
           ) : (
             history.map((item) => (
-              <HistoryCard key={item.id} item={item} />
+              <div 
+                key={item.id} 
+                onClick={() => {
+                  if (item.mode === "chat" && item.status === "Completed") {
+                    navigate(`/chat-history/${item.id}`, { state: { session: item } });
+                  }
+                }}
+                className={item.mode === "chat" && item.status === "Completed" ? "cursor-pointer" : ""}
+              >
+                <HistoryCard item={item} />
+              </div>
             ))
           )}
         </div>

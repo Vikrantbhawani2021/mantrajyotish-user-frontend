@@ -19,6 +19,7 @@ import CallSession from "./pages/CallSession";
 import Wallet from "./pages/Wallet";
 import Deposit from "./pages/Deposit";
 import TransactionHistory from "./pages/TransactionHistory";
+import ChatHistoryDetails from "./pages/ChatHistoryDetails";
 
 function ProtectedRoute({ children, featureName }) {
   const { isLoggedIn, triggerLoginModal, justLoggedOut } = useAuth();
@@ -95,6 +96,14 @@ function AppContent() {
           element={
             <ProtectedRoute featureName="Astro History">
               <AstroHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat-history/:sessionId"
+          element={
+            <ProtectedRoute featureName="Chat History">
+              <ChatHistoryDetails />
             </ProtectedRoute>
           }
         />

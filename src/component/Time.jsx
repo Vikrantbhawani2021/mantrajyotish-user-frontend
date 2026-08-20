@@ -24,10 +24,26 @@ function Time() {
         </NavLink>
 
         {/* Chat */}
-        <NavLink to="/chat" className={navClass}>
-          <FiMessageCircle className="text-xl sm:text-2xl" />
-          <span className="text-[10px] sm:text-xs mt-1">Chat</span>
-        </NavLink>
+        {(() => {
+          const activeChatStr = localStorage.getItem("active_chat_session");
+          let chatPath = "/chat";
+          let chatState = null;
+          if (activeChatStr) {
+            try {
+              const active = JSON.parse(activeChatStr);
+              if (active && active.name && active.sessionId) {
+                chatPath = `/chat-session/${active.name}`;
+                chatState = { astrologer: { name: active.name }, sessionId: active.sessionId };
+              }
+            } catch {}
+          }
+          return (
+            <NavLink to={chatPath} state={chatState} className={navClass}>
+              <FiMessageCircle className="text-xl sm:text-2xl" />
+              <span className="text-[10px] sm:text-xs mt-1">Chat</span>
+            </NavLink>
+          );
+        })()}
 
         {/* Live Astro */}
         <NavLink to="/liveastro" className={navClass}>

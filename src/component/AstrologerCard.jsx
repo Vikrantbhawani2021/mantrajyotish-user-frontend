@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle, Star, Phone, Video, Wallet, X, AlertTriangle } from "lucide-react";
+import { CheckCircle, Star, Phone, Video, Wallet, X, AlertTriangle, Briefcase, Calendar } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -155,20 +155,7 @@ function AstrologerCard({ item }) {
       let resData;
       let isMock = false;
 
-      // Dual-channel dispatch: HTTP API + Direct Socket.io emission for 100% notification guarantee
       try {
-        const { io } = await import("socket.io-client");
-        const directSocket = io(BACKEND_URL, { transports: ["polling", "websocket"] });
-        directSocket.on("connect", () => {
-          directSocket.emit("register_user", { userId: userId });
-          directSocket.emit("request_call", {
-            userId: userId,
-            astrologerId: astroId,
-            callType: type,
-            walletBalance: currentBalance
-          });
-        });
-
         // Use API helper to request video session
         resData = await requestVideoSession({ userId, astrologerId: astroId, callType: type, walletBalance: currentBalance });
 
@@ -222,105 +209,167 @@ function AstrologerCard({ item }) {
         />
       )}
 
-      <div className="bg-white rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-gray-100 p-4.5 flex items-center justify-between gap-3 w-full hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] hover:scale-[1.01] transition-all duration-300">
+      <div className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300">
 
-        {/* Left Details */}
-        <div className="flex gap-3.5 flex-1 min-w-0">
+        {/* Column 1 & Column 2 Wrapper */}
+        <div className="flex gap-3 flex-1 min-w-0">
+          
+          {/* Column 1: Image + Rating & Price Row */}
+          <div className="flex flex-col items-center flex-shrink-0 gap-2">
+            <div className="relative">
+              {data.tag && (
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[#ff7448] text-white text-[7px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap uppercase tracking-wider shadow-xs z-10">
+                  {data.tag}
+                </span>
+              )}
+              <div className="w-16 h-16 rounded-[16px] overflow-hidden border border-orange-100 shadow-inner relative">
+                <img
+                  src={data.image}
+                  alt={data.name}
+                  className="w-full h-full object-cover"
+                />
+                
+                {/* Diagonal Status Ribbon (top-left of avatar) */}
+                {(() => {
+                  let ribbonBg = "bg-green-500";
+                  let ribbonText = "ONLINE";
 
-          {/* Image */}
-          <div className="relative flex-shrink-0">
-            {data.tag && (
-              <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#ff7448] text-white text-[8px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap uppercase tracking-wider shadow-sm">
-                {data.tag}
-              </span>
-            )}
+                  if (data.isOnline === false) {
+                    ribbonBg = "bg-gray-400";
+                    ribbonText = "OFFLINE";
+                  } else if (data.isAvailable === false || data.isBusy === true) {
+                    ribbonBg = "bg-amber-500";
+                    ribbonText = "BUSY";
+                  }
 
-            <div className="w-18 h-18 rounded-2xl overflow-hidden border border-orange-100 shadow-inner">
-              <img
-                src={data.image}
-                alt={data.name}
-                className="w-full h-full object-cover"
-              />
+                  return (
+                    <div 
+                      className={`absolute top-0 left-0 w-14 h-3.5 -translate-x-4 translate-y-1 -rotate-45 flex items-center justify-center ${ribbonBg} z-1 shadow-xs`}
+                      title={ribbonText}
+                    >
+                      <span className="text-[5.5px] font-extrabold text-white tracking-wider leading-none text-center">
+                        {ribbonText}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+              
+              {/* Status Indicator Dot (bottom-right of avatar) */}
+              {(() => {
+                let dotColor = "bg-[#2EA248]"; // Default Online Green
+                let statusTitle = "Online";
+
+                if (data.isOnline === false) {
+                  dotColor = "bg-gray-400"; // Offline Grey
+                  statusTitle = "Offline";
+                } else if (data.isAvailable === false || data.isBusy === true) {
+                  dotColor = "bg-amber-500"; // Busy Yellow/Amber
+                  statusTitle = "Busy";
+                }
+
+                return (
+                  <span
+                    className={`absolute bottom-0.5 right-0.5 w-3 h-3 border-2 border-white rounded-full z-1 shadow-xs ${dotColor}`}
+                    title={statusTitle}
+                  />
+                );
+              })()}
+            </div>
+
+            {/* Rating Stars + Numerical Value underneath the image */}
+            <div className="flex flex-col items-center mt-1.5 justify-center">
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((starIndex) => {
+                  const ratingVal = parseFloat(data.rating || 5);
+                  const isFilled = starIndex <= Math.round(ratingVal);
+                  return (
+                    <Star
+                      key={starIndex}
+                      size={9}
+                      className={isFilled ? "fill-yellow-400 text-yellow-400 flex-shrink-0" : "text-gray-300 flex-shrink-0"}
+                    />
+                  );
+                })}
+              </div>
+              <span className="text-[10px] font-bold text-gray-500 mt-0.5">{data.rating}</span>
             </div>
           </div>
 
-          {/* Details */}
-          <div className="flex-1 min-w-0 flex flex-col justify-center">
-
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <h2 className="font-bold text-[#1d2340] text-base leading-tight truncate">
+          {/* Column 2: Info Details */}
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5 justify-center">
+            
+            {/* Name + Verified Row (Online badge removed) */}
+            <div className="flex items-center gap-1 flex-wrap min-w-0">
+              <h2 className="font-bold text-[#1d2340] text-sm leading-tight truncate">
                 {data.name}
               </h2>
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
-                data.isOnline !== false ? "bg-[#FFF2EC] text-[#FF6F3D]" : "bg-gray-100 text-gray-500"
-              }`}>
-                {data.isOnline !== false ? "Online" : "Offline"}
-              </span>
               <CheckCircle
-                size={14}
+                size={12}
                 className="text-[#2EA248] fill-[#EBF7EE] flex-shrink-0"
               />
+            </div>
+
+            {/* Follow Button */}
+            <div className="flex mt-0.5">
               <button
                 onClick={handleToggleFollow}
-                className={`text-[9px] font-bold px-2 py-0.5 rounded-md transition-all uppercase tracking-wider cursor-pointer active:scale-95 ${
+                className={`text-[8.5px] font-bold px-2 py-0.5 rounded-md transition-all uppercase tracking-wider cursor-pointer active:scale-95 flex items-center gap-0.5 ${
                   isFollowed
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    ? "bg-green-50 text-green-600 border border-green-200"
+                    : "bg-gray-50 border border-gray-100 text-gray-500 hover:bg-gray-100"
                 }`}
               >
                 {isFollowed ? "Following" : "+ Follow"}
               </button>
             </div>
 
-            <p className="text-xs text-gray-500 mt-1 leading-normal truncate">
+            {/* Specialization List */}
+            <p className="text-[10px] text-gray-500 leading-snug font-medium mt-0.5 line-clamp-2">
               {data.skills || data.skill}
             </p>
 
-            <p className="text-[10px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">
-              Exp: {data.experience || data.exp}
-            </p>
-
-            <div className="flex items-center gap-3 mt-2">
-              <div className="flex items-center gap-0.5">
-                <Star
-                  size={13}
-                  className="fill-yellow-400 text-yellow-400"
-                />
-                <span className="text-xs font-bold text-gray-700">
-                  {data.rating}
-                </span>
+            {/* Experience Icons Row */}
+            <div className="flex items-center gap-1 text-[9px] text-gray-400 font-semibold mt-1 flex-wrap min-w-0">
+              <div className="flex items-center gap-0.5 min-w-0">
+                <Briefcase size={11} className="text-gray-400 flex-shrink-0" />
+                <span className="truncate">EXP: {data.experience?.toUpperCase().replace(" EXPERIENCE YEARS", "").replace(" YEARS", "") || "5"}+ YRS</span>
               </div>
-
-              <span className="text-xs font-bold text-[#ff7448]">
-                {data.price}
-              </span>
+              <span className="text-gray-200 font-light">|</span>
+              <div className="flex items-center gap-0.5 min-w-0">
+                <Calendar size={11} className="text-gray-400 flex-shrink-0" />
+                <span className="truncate">EXPERIENCE YEARS</span>
+              </div>
             </div>
 
           </div>
 
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col gap-2 flex-shrink-0">
+        {/* Column 3: Price & Action Buttons */}
+        <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0">
+          {/* Price displayed above Audio call button */}
+          <span className="font-extrabold text-[#ff7448] text-xs mb-0.5">
+            {data.price}
+          </span>
 
           <button
             disabled={loadingCall !== null}
             onClick={() => handleStartCall("AUDIO")}
-            className="w-[96px] py-2.5 rounded-full bg-[#EBF7EE] text-[#2EA248] hover:bg-[#d8eedc] text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+            className="w-[82px] h-[36px] rounded-[12px] bg-[#EBF7EE] text-[#2EA248] hover:bg-[#d8eedc] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
           >
-            <Phone size={13} className="fill-current" />
-            {loadingCall === "AUDIO" ? "..." : "Audio"}
+            <Phone size={11} className="fill-current" />
+            <span>Audio</span>
           </button>
 
           <button
             disabled={loadingCall !== null}
             onClick={() => handleStartCall("VIDEO")}
-            className="w-[96px] py-2.5 rounded-full bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+            className="w-[82px] h-[36px] rounded-[12px] bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
           >
-            <Video size={13} className="fill-current" />
-            {loadingCall === "VIDEO" ? "..." : "Video"}
+            <Video size={11} className="fill-current" />
+            <span>Video</span>
           </button>
-
         </div>
 
       </div>

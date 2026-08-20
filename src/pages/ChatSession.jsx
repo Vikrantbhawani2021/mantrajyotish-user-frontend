@@ -4,6 +4,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
 import { BACKEND_URL } from "../config/backend";
+import { endChat, rateChat, initiateChat, sendMessage } from "../api/chat";
 
 const CakeIcon = () => (
   <svg className="w-6 h-6 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -43,12 +44,19 @@ export default function ChatSession() {
     rating: "4.9",
   };
 
-  const sessionId = location.state?.sessionId;
+  const [currentSessionId, setCurrentSessionId] = useState(location.state?.sessionId || null);
+  const sessionId = currentSessionId;
   const userObj = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = userObj._id || userObj.id || "";
 
   const [messages, setMessages] = useState([]);
-  const [showDobModal, setShowDobModal] = useState(true);
+  const [showDobModal, setShowDobModal] = useState(() => {
+    if (sessionId) {
+      const confirmed = localStorage.getItem(`dob_confirmed_${sessionId}`);
+      if (confirmed === "true") return false;
+    }
+    return true;
+  });
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [tempDob, setTempDob] = useState(() => {
     const localDob = localStorage.getItem("dob");
@@ -130,7 +138,7 @@ export default function ChatSession() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [showConfirmEnd, setShowConfirmEnd] = useState(false);
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
   const [submittingRate, setSubmittingRate] = useState(false);
 
@@ -197,13 +205,46 @@ export default function ChatSession() {
     setShowScrollBottom(isScrolledUp);
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const hasInitialScrollRef = useRef(false);
+
+  const scrollToBottom = (isSmooth = true) => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ 
+        behavior: isSmooth ? "smooth" : "auto",
+        block: "end"
+      });
+    }, 100);
   };
 
   useEffect(() => {
-    scrollToBottom();
+    if (messages.length > 0) {
+      if (!hasInitialScrollRef.current) {
+        scrollToBottom(false);
+        hasInitialScrollRef.current = true;
+      } else {
+        const lastMsg = messages[messages.length - 1];
+        const sentByMe = lastMsg && lastMsg.sender !== "astrologer";
+        
+        let isAtBottom = true;
+        if (chatContainerRef.current) {
+          const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+          // If the user has scrolled up past 300px from the bottom, isAtBottom is false
+          isAtBottom = scrollHeight - scrollTop - clientHeight <= 300;
+        }
+        
+        // Only auto-scroll to bottom if user is already at the bottom or sent the message
+        if (isAtBottom || sentByMe) {
+          scrollToBottom(true);
+        }
+      }
+    }
   }, [messages]);
+
+  useEffect(() => {
+    if (sessionId && name) {
+      localStorage.setItem("active_chat_session", JSON.stringify({ name, sessionId }));
+    }
+  }, [sessionId, name]);
 
   // Socket Connection and API Setup
   useEffect(() => {
@@ -213,8 +254,7 @@ export default function ChatSession() {
     }
 
     if (!sessionId) {
-      alert("Invalid Chat Session. Redirecting to chat list.");
-      navigate("/chat");
+      // Wait for DOB confirmation to initiate the session on backend
       return;
     }
 
@@ -399,6 +439,7 @@ export default function ChatSession() {
     // Chat ended event
     const handleChatEnded = (data) => {
       console.log("Chat ended event received on socket:", data);
+      localStorage.removeItem("active_chat_session");
       alert(data?.message || "This chat session has ended.");
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -474,22 +515,31 @@ export default function ChatSession() {
         const resData = await getSessionsForUser(userId);
         if (resData && resData.success && resData.data) {
           const currentSession = resData.data.find(s => s._id === sessionId || s.id === sessionId);
-          if (currentSession && (currentSession.status === "ACTIVE" || currentSession.status === "COMPLETED" || currentSession.status === "ENDED")) {
-            const finalStatus = currentSession.status === "ENDED" ? "COMPLETED" : currentSession.status;
-            setSessionStatus((prev) => {
-              if (prev !== finalStatus) {
-                console.log("Session status dynamically updated via poll:", finalStatus);
-                if (finalStatus === "COMPLETED") {
-                  alert("This chat session has been completed by the astrologer.");
-                  if (socketRef.current) {
-                    socketRef.current.disconnect();
-                  }
-                  navigate("/chat");
-                }
-                return finalStatus;
+          if (currentSession) {
+            const statusUpper = (currentSession.status || "").toUpperCase();
+            
+            // If the status is a final state, clear the localStorage session and cleanup
+            if (statusUpper !== "PENDING" && statusUpper !== "ACTIVE") {
+              localStorage.removeItem("active_chat_session");
+              if (socketRef.current) {
+                socketRef.current.disconnect();
               }
-              return prev;
-            });
+              
+              if (statusUpper === "COMPLETED" || statusUpper === "ENDED") {
+                alert("This chat session has been completed.");
+              } else if (statusUpper === "REJECTED") {
+                alert("This chat request was rejected by the astrologer.");
+              } else if (statusUpper === "CANCELLED") {
+                alert("This chat session has been cancelled.");
+              } else {
+                alert(`Chat session ended with status: ${statusUpper}`);
+              }
+              
+              navigate("/chat");
+              return;
+            } else if (statusUpper === "ACTIVE") {
+              setSessionStatus("ACTIVE");
+            }
           }
         }
       } catch (e) {
@@ -507,27 +557,76 @@ export default function ChatSession() {
     };
   }, [sessionId, isLoggedIn]);
 
-  const handleConfirmDob = () => {
+  const handleConfirmDob = async () => {
     setShowDobModal(false);
+    let targetSessionId = sessionId;
+
+    if (!targetSessionId) {
+      // Initiate the session on confirm DOB
+      try {
+        const userObj = JSON.parse(localStorage.getItem("user") || "{}");
+        const userId = userObj._id || userObj.id || "";
+        const userName = userObj.name ||
+                         userObj.userName ||
+                         (userObj.firstname ? `${userObj.firstname} ${userObj.lastname || ""}`.trim() : "") ||
+                         localStorage.getItem("userName") ||
+                         "";
+
+        const resData = await initiateChat({ 
+          userId, 
+          astrologerId: astrologer.id, 
+          name: userName, 
+          userName 
+        });
+
+        if (resData && resData.success) {
+          targetSessionId = resData.data._id || resData.data.sessionId;
+          setCurrentSessionId(targetSessionId);
+          localStorage.setItem("active_chat_session", JSON.stringify({ name, sessionId: targetSessionId }));
+        } else {
+          alert(resData?.message || "Failed to start chat session.");
+          navigate("/chat");
+          return;
+        }
+      } catch (err) {
+        console.error("Error initiating chat on DOB confirm:", err);
+        alert("Failed to initiate chat. Please try again.");
+        navigate("/chat");
+        return;
+      }
+    }
+
+    localStorage.setItem(`dob_confirmed_${targetSessionId}`, "true");
     
-    // Emit initial DoB message through socket
+    // Emit initial DoB message through socket or API
     const formattedDob = formatDobToLong(tempDob);
     const dobText = `🎂 My Date of Birth is ${formattedDob}`;
-    const token = localStorage.getItem("authToken");
 
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit("send_message", {
-        sessionId: sessionId,
-        chatId: sessionId,
-        roomId: sessionId,
-        senderId: userId,
-        senderType: "USER",
-        text: dobText,
-        messageType: "text"
-      });
-    } else {
-      sendMessage({ sessionId, senderId: userId, senderType: "USER", text: dobText, messageType: "text" }).catch((err) => console.error("DOB send message REST API error:", err));
-    }
+    // Send the DOB message after socket connects
+    const checkAndSendMessage = () => {
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit("send_message", {
+          sessionId: targetSessionId,
+          chatId: targetSessionId,
+          roomId: targetSessionId,
+          senderId: userId,
+          senderType: "USER",
+          text: dobText,
+          messageType: "text"
+        });
+      } else {
+        sendMessage({ 
+          sessionId: targetSessionId, 
+          senderId: userId, 
+          senderType: "USER", 
+          text: dobText, 
+          messageType: "text" 
+        }).catch((err) => console.error("DOB send message REST API error:", err));
+      }
+    };
+
+    // Delay slightly to give time for socket connection to establish if we just initialized the session
+    setTimeout(checkAndSendMessage, 800);
   };
 
   const handleSendMessage = (e) => {
@@ -622,10 +721,13 @@ export default function ChatSession() {
       const resData = await endChat(sessionId);
       if (resData && resData.success) {
         setSessionStatus("COMPLETED");
+        localStorage.removeItem("active_chat_session");
         setSummaryData({
           totalDurationMinutes: resData.data?.totalDurationMinutes || elapsedMinutes,
+          totalDurationSeconds: resData.data?.totalDurationSeconds || (elapsedMinutes * 60),
           totalAmountDeducted: resData.data?.totalAmountDeducted || (elapsedMinutes * astrologer.priceRaw),
-          astrologerEarnings: resData.data?.astrologerEarnings || 0
+          astrologerEarnings: resData.data?.astrologerEarnings || 0,
+          sessionCode: resData.data?.sessionCode || null
         });
         setShowConfirmEnd(false);
         setShowSummaryModal(true);
@@ -637,8 +739,10 @@ export default function ChatSession() {
       console.error("Error ending chat:", error);
       // Local fallback in case of connection failure
       setSessionStatus("COMPLETED");
+      localStorage.removeItem("active_chat_session");
       setSummaryData({
         totalDurationMinutes: elapsedMinutes,
+        totalDurationSeconds: elapsedMinutes * 60,
         totalAmountDeducted: elapsedMinutes * astrologer.priceRaw,
         astrologerEarnings: 0
       });
@@ -649,11 +753,14 @@ export default function ChatSession() {
   };
 
   const handleRateSession = async () => {
+    if (rating === 0) {
+      alert("Please select a rating star to submit your review.");
+      return;
+    }
     setSubmittingRate(true);
     try {
-      const resData = await rateChat({ sessionId, rating, review });
-      if (resData && resData.success) alert("Thank you for your rating!");
-      else alert(resData?.message || "Failed to submit rating.");
+      await rateChat({ sessionId, rating, review });
+      // No alert — just navigate away cleanly
     } catch (err) {
       console.error("Rating Error:", err);
     } finally {
@@ -784,7 +891,14 @@ export default function ChatSession() {
               Astrologer is accepting your chat session request. This normally takes 15-30 seconds.
             </p>
             <button
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  // Inform backend that the pending request is cancelled
+                  await endChat(cleanSessionId);
+                } catch (err) {
+                  console.error("Error cancelling chat request:", err);
+                }
+                localStorage.removeItem("active_chat_session");
                 if (socketRef.current) socketRef.current.disconnect();
                 navigate("/chat");
               }}
@@ -871,9 +985,9 @@ export default function ChatSession() {
                     <span className="font-mono text-gray-600 select-all" title={cleanSessionId}>{cleanSessionId || "N/A"}</span>
                     <button 
                       onClick={() => {
-                        if (cleanSessionId) {
-                          navigator.clipboard.writeText(cleanSessionId);
-                          alert("Session ID copied!");
+                        if (cleanSessionId || summaryData?.sessionCode) {
+                          navigator.clipboard.writeText(summaryData?.sessionCode || cleanSessionId);
+                          // Removed blocking alert - clipboard operation is silent
                         }
                       }}
                       className="text-gray-400 hover:text-gray-600 cursor-pointer p-0.5 rounded"
@@ -891,18 +1005,8 @@ export default function ChatSession() {
         <div 
           ref={chatContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#FAFAFA] relative"
+          className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#FAFAFA]"
         >
-          {showScrollBottom && (
-            <button 
-              type="button"
-              onClick={scrollToBottom}
-              className="absolute bottom-6 right-6 z-40 bg-white text-[#FF6F3D] hover:bg-gray-50 border border-gray-200 p-2 rounded-full shadow-md flex items-center justify-center cursor-pointer transition-all active:scale-90"
-              title="Scroll to Bottom"
-            >
-              <ChevronDown size={18} strokeWidth={3} />
-            </button>
-          )}
           
 
 
@@ -917,28 +1021,37 @@ export default function ChatSession() {
           {messages.map((msg) => {
             const isAstrologer = msg.sender === "astrologer";
             return (
-              <div
-                key={msg.id}
-                className={`flex w-full ${
-                  isAstrologer ? "justify-start" : "justify-end"
-                }`}
+              <div 
+                key={msg.id} 
+                className={`flex w-full mb-3 ${isAstrologer ? "justify-start" : "justify-end"}`}
               >
-                <div
-                  className={`p-3 rounded-2xl shadow-sm relative max-w-[85%] ${
-                    isAstrologer
-                      ? "bg-white text-gray-800 rounded-bl-none border border-gray-100"
-                      : "bg-gradient-to-r from-[#ff8f6c] to-[#ff5c33] text-white rounded-br-none font-medium"
+                {/* Bubble Container */}
+                <div 
+                  className={`max-w-[75%] px-4.5 py-2.5 rounded-[22px] shadow-xs text-[14px] leading-relaxed relative ${
+                    isAstrologer 
+                      ? "bg-white text-gray-800 rounded-tl-none border border-gray-100" 
+                      : "bg-[#FF6F3D] text-white rounded-tr-none"
                   }`}
-                  style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
                 >
-                  {msg.image ? (
-                    <img
-                      src={msg.image}
-                      alt="Uploaded image"
-                      className="max-w-[200px] max-h-[200px] rounded-lg object-cover mb-1"
-                    />
+                  {msg.type === "image" ? (
+                    <div className="flex flex-col gap-1">
+                      <img 
+                        src={msg.mediaUrl} 
+                        alt="Uploaded media" 
+                        className="rounded-lg max-w-full max-h-48 object-cover cursor-pointer"
+                        onClick={() => window.open(msg.mediaUrl, "_blank")}
+                      />
+                      {msg.text && <p className="mt-1">{msg.text}</p>}
+                    </div>
+                  ) : msg.type === "kundli" ? (
+                    <div className={`p-2.5 rounded-xl border ${isAstrologer ? "bg-orange-50/40 border-orange-100/60 text-gray-800" : "bg-orange-600/30 border-orange-400/40 text-white"}`}>
+                      <span className={`font-extrabold text-[11px] uppercase tracking-wider block mb-1 ${isAstrologer ? "text-orange-600" : "text-orange-200"}`}>
+                        Kundli Shared
+                      </span>
+                      <p className="text-xs leading-normal">{msg.text}</p>
+                    </div>
                   ) : (
-                    <p className={`text-[14px] leading-relaxed whitespace-pre-line break-words ${isAstrologer ? "text-gray-800" : "text-white"}`} style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
+                    <p className="whitespace-pre-line break-words">
                       {msg.text}
                     </p>
                   )}
@@ -957,6 +1070,18 @@ export default function ChatSession() {
           })}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Floating Scroll to Bottom button - fixed above the send input bar */}
+        {showScrollBottom && (
+          <button 
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-24 right-6 z-40 bg-white text-[#FF6F3D] hover:bg-gray-50 border border-gray-200 p-2.5 rounded-full shadow-lg flex items-center justify-center cursor-pointer transition-all active:scale-90"
+            title="Scroll to Bottom"
+          >
+            <ChevronDown size={18} strokeWidth={3} />
+          </button>
+        )}
 
         {/* Input Bar */}
         <form 
@@ -1061,7 +1186,18 @@ export default function ChatSession() {
                 <div className="flex gap-3 w-full mt-6 mb-2">
                   <button
                     type="button"
-                    onClick={() => navigate(-1)}
+                    onClick={async () => {
+                      try {
+                        if (sessionId) {
+                          await endChat(sessionId);
+                        }
+                      } catch (err) {
+                        console.error("Error cancelling chat request from DOB modal:", err);
+                      }
+                      localStorage.removeItem("active_chat_session");
+                      if (socketRef.current) socketRef.current.disconnect();
+                      navigate("/chat");
+                    }}
                     className="flex-1 py-3 border border-gray-200 hover:bg-gray-50 rounded-xl font-bold text-gray-500 text-sm active:scale-95 transition-all cursor-pointer"
                   >
                     Cancel
@@ -1121,8 +1257,8 @@ export default function ChatSession() {
               <div className="w-full bg-[#FAFAFA] rounded-2xl p-4 space-y-3 mt-5 border border-gray-100">
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Session ID</span>
-                  <span className="font-mono text-gray-600 select-all" title={cleanSessionId}>
-                    {cleanSessionId || "N/A"}
+                  <span className="font-mono text-gray-600 select-all text-[10px]" title={cleanSessionId}>
+                    {summaryData?.sessionCode || cleanSessionId || "N/A"}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
@@ -1131,7 +1267,16 @@ export default function ChatSession() {
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Chat Duration</span>
-                  <span className="font-semibold text-gray-800">{summaryData.totalDurationMinutes} minutes</span>
+                  <span className="font-semibold text-gray-800">
+                    {(() => {
+                      const secs = summaryData.totalDurationSeconds || (summaryData.totalDurationMinutes * 60) || 0;
+                      const mins = Math.floor(secs / 60);
+                      const remSecs = secs % 60;
+                      if (mins === 0) return `${remSecs} sec`;
+                      if (remSecs === 0) return `${mins} min`;
+                      return `${mins} min ${remSecs} sec`;
+                    })()}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Deduction Rate</span>
@@ -1139,7 +1284,7 @@ export default function ChatSession() {
                 </div>
                 <div className="border-t border-dashed border-gray-200 pt-2 flex justify-between text-sm font-bold text-gray-900">
                   <span>Total Cost</span>
-                  <span className="text-[#FF6F3D]">₹{Math.floor(summaryData.totalAmountDeducted)}</span>
+                  <span className="text-[#FF6F3D]">₹{Number(summaryData.totalAmountDeducted || 0).toFixed(2)}</span>
                 </div>
               </div>
 

@@ -24,6 +24,8 @@ export default function CallSession() {
   const [callType, setCallType] = useState(() => String(initialCallType || "AUDIO").toUpperCase());
   const [channelName, setChannelName] = useState(initialChannelName || "");
   const [ratePerMinute, setRatePerMinute] = useState(astrologer?.priceRaw || 0);
+  // Non-blocking in-screen toast (replaces all browser alert() calls)
+  const [toastMessage, setToastMessage] = useState(null); // { text, type: 'info'|'warn'|'error' }
 
   // Stats & controls
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -40,7 +42,7 @@ export default function CallSession() {
   const [remoteUser, setRemoteUser] = useState(null);
   
   // Rating and review state
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
   const [submittingRate, setSubmittingRate] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
@@ -54,6 +56,8 @@ export default function CallSession() {
   const remoteVideoRef = useRef(null);
   const timerRef = useRef(null);
   const isInitRef = useRef(false);
+  // Ref so socket callbacks always read the LIVE status without stale closures
+  const sessionStatusRef = useRef("PENDING");
 
   // Format second timer to MM:SS
   const formatTime = (totalSecs) => {
@@ -104,6 +108,17 @@ export default function CallSession() {
     }
   }, [sessionStatus, isCameraOff]);
 
+  // Keep sessionStatusRef in sync with React state
+  useEffect(() => {
+    sessionStatusRef.current = sessionStatus;
+  }, [sessionStatus]);
+
+  // Show a non-blocking toast banner that auto-dismisses
+  const showToast = (text, type = "info", durationMs = 5000) => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), durationMs);
+  };
+
   // Clean up Agora tracks & client
   const cleanupCall = async () => {
     isInitRef.current = false;
@@ -150,8 +165,7 @@ export default function CallSession() {
     }
 
     if (!sessionId) {
-      alert("Invalid Call Session. Redirecting to call list.");
-      navigate("/call");
+      navigate("/call", { replace: true });
       return;
     }
 
@@ -241,8 +255,10 @@ export default function CallSession() {
       const sessionObj = data?.session || data?.data || data;
       const finalDuration = sessionObj?.totalDurationMinutes || Math.max(1, Math.ceil(elapsedSeconds / 60));
       const finalCost = sessionObj?.totalAmountDeducted || (finalDuration * ratePerMinute);
+      const finalSecs = sessionObj?.totalDurationSeconds || (sessionObj?.duration ? sessionObj.duration * 60 : elapsedSeconds);
 
       setSummaryData({
+        totalDurationSeconds: finalSecs,
         totalDurationMinutes: finalDuration,
         totalAmountDeducted: finalCost
       });
@@ -253,21 +269,38 @@ export default function CallSession() {
     };
 
     socket.on("call_rejected", (data) => {
-      alert(data?.reason ? `Call rejected: ${data.reason}` : "Call was declined by the astrologer.");
-      if (socketRef.current) socketRef.current.disconnect();
-      navigate("/call");
+      // 🛡️ Guard: ignore stale rejection events that arrive after call is already ACTIVE
+      if (sessionStatusRef.current === "ACTIVE" || sessionStatusRef.current === "COMPLETED") {
+        console.warn("⚠️ Ignoring stale call_rejected — current status:", sessionStatusRef.current);
+        return;
+      }
+      const reason = data?.reason || "Call was declined by the astrologer.";
+      setSessionStatus("REJECTED");
+      showToast(reason, "error", 4000);
+      setTimeout(() => {
+        if (socketRef.current) socketRef.current.disconnect();
+        navigate("/call", { replace: true });
+      }, 3500);
     });
 
     socket.on("call_missed", () => {
-      alert("Call was not answered.");
-      if (socketRef.current) socketRef.current.disconnect();
-      navigate("/call");
+      if (sessionStatusRef.current === "ACTIVE" || sessionStatusRef.current === "COMPLETED") return;
+      setSessionStatus("MISSED");
+      showToast("Astrologer did not answer the call.", "warn", 4000);
+      setTimeout(() => {
+        if (socketRef.current) socketRef.current.disconnect();
+        navigate("/call", { replace: true });
+      }, 3500);
     });
 
     socket.on("call_timeout", () => {
-      alert("Call connection timed out.");
-      if (socketRef.current) socketRef.current.disconnect();
-      navigate("/call");
+      if (sessionStatusRef.current === "ACTIVE" || sessionStatusRef.current === "COMPLETED") return;
+      setSessionStatus("MISSED");
+      showToast("Call connection timed out.", "warn", 4000);
+      setTimeout(() => {
+        if (socketRef.current) socketRef.current.disconnect();
+        navigate("/call", { replace: true });
+      }, 3500);
     });
 
     socket.on("call_ended", endCallFlow);
@@ -275,7 +308,7 @@ export default function CallSession() {
     socket.on("end_call", endCallFlow);
     socket.on("session_ended", endCallFlow);
     socket.on("call_ended_insufficient_funds", (data) => {
-      alert("Call ended due to insufficient wallet balance.");
+      showToast("Call ended: insufficient wallet balance.", "warn", 5000);
       endCallFlow(data);
     });
 
@@ -434,6 +467,7 @@ export default function CallSession() {
       cleanupCall();
       setSessionStatus("COMPLETED");
       setSummaryData({
+        totalDurationSeconds: elapsedSeconds,
         totalDurationMinutes: Math.max(1, Math.ceil(elapsedSeconds / 60)),
         totalAmountDeducted: Math.max(1, Math.ceil(elapsedSeconds / 60)) * ratePerMinute
       });
@@ -452,12 +486,15 @@ export default function CallSession() {
       setSessionStatus("COMPLETED");
 
       const sessionObj = resData.data || {};
-      const finalDuration = sessionObj.totalDurationMinutes || Math.max(1, Math.ceil(elapsedSeconds / 60));
-      const finalCost = sessionObj.totalAmountDeducted || (finalDuration * ratePerMinute);
-
+      const finalSeconds = sessionObj.totalDurationSeconds || elapsedSeconds;
+      const finalCost = sessionObj.totalAmountDeducted
+        ? parseFloat(sessionObj.totalAmountDeducted.toFixed(2))
+        : parseFloat(((finalSeconds / 60) * ratePerMinute).toFixed(2));
       setSummaryData({
-        totalDurationMinutes: finalDuration,
-        totalAmountDeducted: finalCost
+        totalDurationSeconds: finalSeconds,
+        totalDurationMinutes: sessionObj.totalDurationMinutes || Math.ceil(finalSeconds / 60),
+        totalAmountDeducted: finalCost,
+        sessionCode: sessionObj.sessionCode || null
       });
 
       if (socketRef.current) {
@@ -469,6 +506,7 @@ export default function CallSession() {
       cleanupCall();
       setSessionStatus("COMPLETED");
       setSummaryData({
+        totalDurationSeconds: elapsedSeconds,
         totalDurationMinutes: Math.max(1, Math.ceil(elapsedSeconds / 60)),
         totalAmountDeducted: Math.max(1, Math.ceil(elapsedSeconds / 60)) * ratePerMinute
       });
@@ -481,13 +519,14 @@ export default function CallSession() {
   // Rate call session
   const handleRateSession = async (e) => {
     e.preventDefault();
+    if (rating === 0) {
+      alert("Please select a rating star to submit your review.");
+      return;
+    }
     setSubmittingRate(true);
     try {
-      const res = await rateVideoSession({ sessionId, rating, review });
-      if (!(res && res.success)) {
-        await callRate({ sessionId, rating, review });
-      }
-      alert("Thank you for your valuable feedback!");
+      await rateVideoSession({ sessionId, rating, review });
+      // No alert — navigate away cleanly
     } catch (err) {
       console.error("Rating submission error:", err);
     } finally {
@@ -499,9 +538,26 @@ export default function CallSession() {
   // --- RENDER VIEWS ---
 
   // 1. PENDING (Ringing Outgoing) View
-  if (sessionStatus === "PENDING") {
+  if (sessionStatus === "PENDING" || sessionStatus === "REJECTED" || sessionStatus === "MISSED") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#111827] to-[#1F2937] flex justify-center text-white">
+        {/* ✅ Non-blocking in-screen notification banner — replaces all browser alert() */}
+        {toastMessage && (
+          <div
+            className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] max-w-sm w-[90vw] px-5 py-3.5 rounded-2xl shadow-2xl text-white text-sm font-semibold flex items-start gap-2.5 animate-fade-in ${
+              toastMessage.type === "error"
+                ? "bg-red-600"
+                : toastMessage.type === "warn"
+                ? "bg-amber-500"
+                : "bg-gray-800"
+            }`}
+          >
+            <span className="text-lg leading-none flex-shrink-0">
+              {toastMessage.type === "error" ? "❌" : toastMessage.type === "warn" ? "⚠️" : "ℹ️"}
+            </span>
+            <span>{toastMessage.text}</span>
+          </div>
+        )}
         <div className="w-full max-w-[430px] flex flex-col justify-between items-center p-8 relative">
           
           {/* Header */}
@@ -548,6 +604,24 @@ export default function CallSession() {
     return (
       <div className="h-screen h-[100dvh] w-full max-w-[430px] bg-slate-950 flex flex-col justify-between items-center relative overflow-hidden text-white mx-auto shadow-2xl">
         
+        {/* ✅ Non-blocking in-screen notification banner */}
+        {toastMessage && (
+          <div
+            className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] max-w-sm w-[90vw] px-5 py-3.5 rounded-2xl shadow-2xl text-white text-sm font-semibold flex items-start gap-2.5 animate-fade-in ${
+              toastMessage.type === "error"
+                ? "bg-red-600"
+                : toastMessage.type === "warn"
+                ? "bg-amber-500"
+                : "bg-gray-800"
+            }`}
+          >
+            <span className="text-lg leading-none flex-shrink-0">
+              {toastMessage.type === "error" ? "❌" : toastMessage.type === "warn" ? "⚠️" : "ℹ️"}
+            </span>
+            <span>{toastMessage.text}</span>
+          </div>
+        )}
+
         {/* Low Balance Warning Banner */}
         {showWarning && (
           <div className="absolute top-20 left-4 right-4 z-50 bg-[#FFF2EC] border border-[#ffe0d1] rounded-2xl p-3 flex items-center justify-between shadow-2xl animate-fade-in pointer-events-auto text-gray-800">
@@ -820,7 +894,16 @@ export default function CallSession() {
             <div className="w-full bg-[#F3F4F6] rounded-3xl p-5 mt-8 space-y-4 border border-gray-100">
               <div className="flex justify-between items-center text-sm border-b border-gray-200/60 pb-3">
                 <span className="text-gray-500 font-medium">Duration</span>
-                <span className="font-bold text-gray-800">{summaryData?.totalDurationMinutes || 1} min</span>
+                <span className="font-bold text-gray-800">
+                  {(() => {
+                    const secs = summaryData?.totalDurationSeconds || (summaryData?.totalDurationMinutes * 60) || 0;
+                    const mins = Math.floor(secs / 60);
+                    const remSecs = secs % 60;
+                    if (mins === 0) return `${remSecs} sec`;
+                    if (remSecs === 0) return `${mins} min`;
+                    return `${mins} min ${remSecs} sec`;
+                  })()}
+                </span>
               </div>
               <div className="flex justify-between items-center text-sm border-b border-gray-200/60 pb-3">
                 <span className="text-gray-500 font-medium">Rate per minute</span>
@@ -828,7 +911,7 @@ export default function CallSession() {
               </div>
               <div className="flex justify-between items-center text-base pt-1">
                 <span className="text-gray-900 font-bold">Total Charged</span>
-                <span className="font-extrabold text-orange-600 text-lg">₹{summaryData?.totalAmountDeducted || 0}</span>
+                <span className="font-extrabold text-orange-600 text-lg">₹{Number(summaryData?.totalAmountDeducted || 0).toFixed(2)}</span>
               </div>
             </div>
 

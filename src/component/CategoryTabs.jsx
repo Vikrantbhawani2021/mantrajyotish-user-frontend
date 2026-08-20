@@ -1,8 +1,11 @@
 import { useState } from "react";
 
-function CategoryTabs() {
+function CategoryTabs({ activeTab, setActiveTab }) {
   const tabs = ["All", "Love", "Marriage", "Career"];
-  const [active, setActive] = useState("All");
+  const [internalActive, setInternalActive] = useState("All");
+
+  const active = activeTab !== undefined ? activeTab : internalActive;
+  const setActive = setActiveTab !== undefined ? setActiveTab : setInternalActive;
 
   return (
     <div className="px-5">
@@ -11,7 +14,7 @@ function CategoryTabs() {
           <button
             key={tab}
             onClick={() => setActive(tab)}
-            className={`px-6 py-2.5 rounded-full border text-sm font-bold whitespace-nowrap transition-all duration-300 cursor-pointer active:scale-95
+            className={`px-4 py-1.5 rounded-full border text-xs font-bold whitespace-nowrap transition-all duration-300 cursor-pointer active:scale-95
               ${
                 active === tab
                   ? "bg-[#ff7448] text-white border-[#ff7448] shadow-md shadow-orange-500/20"

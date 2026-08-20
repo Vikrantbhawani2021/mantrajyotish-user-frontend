@@ -1,19 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, Search, Mic, MessageCircle } from "lucide-react";
+import { ArrowLeft, Search, Mic, MessageCircle, Star, CheckCircle, Briefcase, Calendar, SlidersHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
 import { useAuth } from "../context/AuthContext";
 import { BACKEND_URL } from "../config/backend";
 import { initiateChat } from "../api/chat";
+import CategoryTabs from "../component/CategoryTabs";
 import InsufficientBalanceModal from "../component/InsufficientBalanceModal";
+import { io } from "socket.io-client";
 
 export default function Chat() {
   const navigate = useNavigate();
   const { isLoggedIn, triggerLoginModal } = useAuth();
   const [loadingAstro, setLoadingAstro] = useState(null);
   const [astrologers, setAstrologers] = useState([]);
+  const [allAstrologers, setAllAstrologers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
   const [insufficient, setInsufficient] = useState({ open: false, message: "" });
+
+  // Filter States
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterOnline, setFilterOnline] = useState(false);
+  const [filterFollowing, setFilterFollowing] = useState(false);
 
   const [followedAstro, setFollowedAstro] = useState(() => {
     try {
@@ -47,12 +57,15 @@ export default function Chat() {
             priceRaw: astro.consultationFee || 15,
             image: astro.profileImage || `https://i.pravatar.cc/200?img=${Math.floor(Math.random() * 70) + 1}`,
           }));
+          setAllAstrologers(formatted);
           setAstrologers(formatted);
         } else {
+          setAllAstrologers([]);
           setAstrologers([]);
         }
       } catch (error) {
         console.error("Fetch astrologers error:", error);
+        setAllAstrologers([]);
         setAstrologers([]);
       } finally {
         setLoading(false);
@@ -60,6 +73,70 @@ export default function Chat() {
     };
     fetchOnlineAstrologers();
   }, []);
+
+  // Listen for real-time status change broadcast from socket
+  useEffect(() => {
+    let socket;
+    try {
+      socket = io(BACKEND_URL, {
+        transports: ["polling", "websocket"]
+      });
+      socket.on("connect", () => {
+        console.log("🔌 Connected to live status sync socket for Chat list");
+      });
+      socket.on("astrologer_status_changed", (updatedData) => {
+        console.log("⚡ Real-time status update received:", updatedData);
+        const updateStatus = (list) =>
+          list.map((astro) =>
+            astro.id === updatedData.astrologerId
+              ? { ...astro, isOnline: updatedData.isOnline, isAvailable: updatedData.isAvailable }
+              : astro
+          );
+        setAllAstrologers((prev) => updateStatus(prev));
+        setAstrologers((prev) => updateStatus(prev));
+      });
+    } catch (err) {
+      console.error("Failed to connect live status socket:", err);
+    }
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, [allAstrologers]);
+
+  // Multi-criteria live search and filter logic
+  useEffect(() => {
+    let filtered = [...allAstrologers];
+
+    // 1. Search Query Filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          (a.skill || "").toLowerCase().includes(q)
+      );
+    }
+
+    // 2. Category Tab Filter
+    if (activeCategory !== "All") {
+      const cat = activeCategory.toLowerCase();
+      filtered = filtered.filter((a) =>
+        (a.skill || "").toLowerCase().includes(cat)
+      );
+    }
+
+    // 3. Online Status Filter
+    if (filterOnline) {
+      filtered = filtered.filter((a) => a.isOnline === true && a.isAvailable === true);
+    }
+
+    // 4. Following Filter
+    if (filterFollowing) {
+      filtered = filtered.filter((a) => followedAstro.includes(a.name));
+    }
+
+    setAstrologers(filtered);
+  }, [searchQuery, activeCategory, filterOnline, filterFollowing, allAstrologers, followedAstro]);
 
   const toggleFollow = (name) => {
     let updated;
@@ -78,115 +155,98 @@ export default function Chat() {
       return;
     }
 
-    setLoadingAstro(item.id);
-    try {
-      const token = localStorage.getItem("authToken");
-      const userObj = JSON.parse(localStorage.getItem("user") || "{}");
-      const userId = userObj._id || userObj.id || "";
-      const userName = userObj.name ||
-                       userObj.userName ||
-                       (userObj.firstname ? `${userObj.firstname} ${userObj.lastname || ""}`.trim() : "") ||
-                       localStorage.getItem("userName") ||
-                       "";
-
-      console.log("Starting chat request with payload:", {
-        userId,
-        astrologerId: item.id,
-        name: userName,
-        token: token ? `${token.substring(0, 15)}...` : "missing"
-      });
-
-      // Dual dispatch: socket emission for real-time notification
-      try {
-        const { io } = await import("socket.io-client");
-        const socket = io(BACKEND_URL, {
-          transports: ["polling", "websocket"]
-        });
-        socket.on("connect", () => {
-          socket.emit("register_user", { userId });
-          socket.emit("request_chat", {
-            userId: userId,
-            astrologerId: item.id
-          });
-        });
-      } catch (sErr) {
-        console.warn("Direct socket chat request error:", sErr);
+    // Directly navigate to ChatSession screen without initiating session yet
+    navigate(`/chat-session/${item.name}`, {
+      state: {
+        astrologer: item,
+        sessionId: null
       }
-
-      try {
-        const resData = await initiateChat({ userId, astrologerId: item.id, name: userName, userName });
-        console.log("Chat initiate API response:", resData);
-        if (resData && resData.success) {
-          navigate(`/chat-session/${item.name}`, {
-            state: {
-              astrologer: item,
-              sessionId: resData.data._id || resData.data.sessionId
-            }
-          });
-        } else {
-          const message = resData?.message || "Failed to start chat session.";
-          if (message.toLowerCase().includes("balance") || message.toLowerCase().includes("wallet") || message.toLowerCase().includes("insufficient")) {
-            setInsufficient({ open: true, message });
-          } else {
-            alert(message);
-          }
-        }
-      } catch (err) {
-        console.error("Chat initiate error:", err);
-        const message = err?.data?.message || err.message || "Failed to start chat session.";
-        if (message.toLowerCase().includes("balance") || message.toLowerCase().includes("wallet") || message.toLowerCase().includes("insufficient")) {
-          setInsufficient({ open: true, message });
-        } else {
-          alert(message);
-        }
-      }
-    } catch (error) {
-      console.error("Start Chat Error:", error);
-      alert(`Error starting chat: ${error.message}`);
-    } finally {
-      setLoadingAstro(null);
-    }
+    });
   };
 
   return (
     <div className="min-h-screen bg-[#F7F7F7] flex justify-center">
-      <div className="w-full max-w-[430px] bg-white min-h-screen shadow-xl relative overflow-hidden flex flex-col justify-between">
 
-        {/* Scrollable Content */}
-        <div className="overflow-y-auto h-screen pb-28">
+      {/* Mobile Container with fixed height to contain inner scrolling */}
+      <div className="w-full max-w-[430px] bg-white h-screen h-[100dvh] shadow-xl relative overflow-hidden flex flex-col justify-between">
 
-          {/* Header */}
-          <div className="bg-gradient-to-r from-orange-500 to-orange-400 rounded-b-[35px] shadow-lg px-5 pt-12 pb-8 relative">
+        {/* Scrollable Container */}
+        <div className="flex-1 overflow-y-auto pb-28">
+
+          {/* 1. Header Title Block (Scrolls away) */}
+          <div className="bg-gradient-to-r from-orange-500 to-orange-400 px-5 pt-10 pb-6 relative text-center">
             <button
               onClick={() => navigate("/home")}
-              className="absolute left-5 top-12 text-white cursor-pointer hover:opacity-80 transition-opacity"
+              className="absolute left-5 top-10 text-white cursor-pointer hover:opacity-80 transition-opacity"
             >
               <ArrowLeft size={26} />
             </button>
-            
-            <div className="text-center">
+
+            <div className="mb-1">
               <h1 className="text-2xl font-bold text-white">
                 Chat with Astrologers
               </h1>
               <p className="text-orange-100 text-sm mt-1">
-                Get instant guidance on love, marriage & career
+                Get instant guidance on love, marriage &amp; career
               </p>
             </div>
           </div>
 
-          {/* Search */}
-          <div className="px-5 mt-5">
-            <div className="flex items-center bg-white border border-orange-100 rounded-full px-4 h-14 shadow-sm focus-within:ring-2 focus-within:ring-orange-400 transition-all">
-              <Search className="text-gray-400" size={20} />
+          {/* 2. Sticky Search Bar & Filters Container (Sticks to top-0) */}
+          <div className="sticky top-0 z-30 bg-gradient-to-r from-orange-500 to-orange-400 rounded-b-[24px] px-5 pb-5 pt-2 shadow-md flex flex-col gap-3">
+            <div className="flex items-center bg-white border border-orange-100 rounded-full px-4 h-12 shadow-md focus-within:ring-2 focus-within:ring-orange-400 transition-all">
+              <Search className="text-gray-400 flex-shrink-0" size={18} />
               <input
-                placeholder="Search for astrologers..."
-                className="flex-1 bg-transparent outline-none px-3 text-base text-gray-700 placeholder-gray-400"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search astrologers..."
+                className="flex-1 bg-transparent outline-none px-3 text-sm text-gray-700 placeholder-gray-400"
               />
-              <Mic className="text-[#ff7448] cursor-pointer hover:scale-105 transition-transform" size={20} />
+              {/* Filter Action Icon */}
+              <button 
+                onClick={() => setShowFilters(!showFilters)} 
+                className="text-gray-400 hover:text-orange-500 transition-colors p-1 cursor-pointer flex-shrink-0"
+                title="Toggle Filters"
+              >
+                <SlidersHorizontal size={18} className={showFilters ? "text-orange-500" : ""} />
+              </button>
+              <Mic className="text-[#ff7448] cursor-pointer hover:scale-105 transition-transform flex-shrink-0" size={18} />
             </div>
+
+            {/* Expandable Filter Pills Toggle Row */}
+            {showFilters && (
+              <div className="flex gap-2 py-1 flex-wrap animate-fade-in">
+                <button
+                  onClick={() => setFilterOnline(!filterOnline)}
+                  className={`px-3 py-1.5 rounded-full text-[9px] font-extrabold border transition-all cursor-pointer flex items-center gap-1 ${
+                    filterOnline
+                      ? "bg-green-500 text-white border-green-500 shadow-sm"
+                      : "bg-white/95 text-gray-600 border-orange-200/40"
+                  }`}
+                >
+                  <span className={filterOnline ? "text-white" : "text-green-500"}>●</span> Online
+                </button>
+                <button
+                  onClick={() => setFilterFollowing(!filterFollowing)}
+                  className={`px-3 py-1.5 rounded-full text-[9px] font-extrabold border transition-all cursor-pointer flex items-center gap-1 ${
+                    filterFollowing
+                      ? "bg-orange-500 text-white border-orange-500 shadow-sm"
+                      : "bg-white/95 text-gray-600 border-orange-200/40"
+                  }`}
+                >
+                  <span className={filterFollowing ? "text-white" : "text-red-500"}>♥</span> Following
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Cards */}
+          {/* 3. Sticky Categories Container (Sticks below search bar container) */}
+          <div className="sticky top-[76px] z-20 bg-white py-3 shadow-xs">
+            <CategoryTabs activeTab={activeCategory} setActiveTab={setActiveCategory} />
+          </div>
+
+          {/* 4. Cards Section */}
           <div className="space-y-4 px-5 mt-6">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -195,88 +255,175 @@ export default function Chat() {
               </div>
             ) : astrologers.length === 0 ? (
               <div className="text-center py-20 text-gray-500 text-sm">
-                No active online astrologers found.
+                {searchQuery || activeCategory !== "All" || filterOnline || filterFollowing
+                  ? "No astrologers match your active filters."
+                  : "No active online astrologers found."}
               </div>
             ) : (
-                astrologers.map((item, index) => (
-                <div
-                  key={index}
-                  onClick={() => handleStartChat(item)}
-                  className="bg-white rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.04)] border border-gray-100 p-4.5 cursor-pointer hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 flex items-center justify-between gap-3"
-                >
-                  {/* Left Details */}
-                  <div className="flex gap-3.5 flex-1 min-w-0">
-                    {/* Image with Online Status */}
-                    <div className="relative flex-shrink-0">
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden border border-orange-100 shadow-inner">
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <span className={`absolute bottom-0 right-0 w-3 h-3 ${item.isOnline ? "bg-green-500" : "bg-gray-400"} border-2 border-white rounded-full`}></span>
-                    </div>
-
-                    {/* Details */}
-                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h2 className="font-bold text-[#1d2340] text-base leading-tight truncate">
-                          {item.name}
-                        </h2>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
-                          item.isOnline ? "bg-[#FFF2EC] text-[#FF6F3D]" : "bg-gray-100 text-gray-500"
-                        }`}>
-                          {item.isOnline ? "Online" : "Offline"}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleFollow(item.name);
-                          }}
-                          className={`text-[9px] font-bold px-2 py-0.5 rounded-md transition-all uppercase tracking-wider cursor-pointer active:scale-95 ${
-                            followedAstro.includes(item.name)
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                          }`}
-                        >
-                          {followedAstro.includes(item.name) ? "Following" : "+ Follow"}
-                        </button>
-                      </div>
-
-                      <p className="text-xs text-gray-500 mt-1 truncate">
-                        {item.skill}
-                      </p>
-
-                      <p className="text-[10px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">
-                        Exp: {item.exp}
-                      </p>
-
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <span className="text-xs font-bold text-orange-500">
-                          {item.price}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          ★ {item.rating}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Chat Button */}
-                  <button
-                    disabled={loadingAstro === item.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStartChat(item);
-                    }}
-                    className="w-[96px] py-2.5 rounded-full bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm shadow-orange-500/5 disabled:opacity-60"
+              astrologers.map((item, index) => {
+                const isFollowed = followedAstro.includes(item.name);
+                return (
+                  <div
+                    key={index}
+                    onClick={() => handleStartChat(item)}
+                    className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300 cursor-pointer"
                   >
-                    <MessageCircle size={13} className="fill-current" />
-                    {loadingAstro === item.id ? "..." : "Chat"}
-                  </button>
-                </div>
-              ))
+                    {/* Column 1 & Column 2 Wrapper */}
+                    <div className="flex gap-3 flex-1 min-w-0">
+                      
+                      {/* Column 1: Image + Rating Row */}
+                      <div className="flex flex-col items-center flex-shrink-0 gap-2">
+                        <div className="relative">
+                          <div className="w-16 h-16 rounded-[16px] overflow-hidden border border-orange-100 shadow-inner relative">
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                            />
+                            
+                            {/* Diagonal Status Ribbon (top-left of avatar) */}
+                            {(() => {
+                              let ribbonBg = "bg-green-500";
+                              let ribbonText = "ONLINE";
+
+                              if (item.isOnline === false) {
+                                ribbonBg = "bg-gray-400";
+                                ribbonText = "OFFLINE";
+                              } else if (item.isAvailable === false) {
+                                ribbonBg = "bg-amber-500";
+                                ribbonText = "BUSY";
+                              }
+
+                              return (
+                                <div 
+                                  className={`absolute top-0 left-0 w-14 h-3.5 -translate-x-4 translate-y-1 -rotate-45 flex items-center justify-center ${ribbonBg} z-1 shadow-xs`}
+                                  title={ribbonText}
+                                >
+                                  <span className="text-[5.5px] font-extrabold text-white tracking-wider leading-none text-center">
+                                    {ribbonText}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                          
+                          {/* Status Indicator Dot (bottom-right of avatar) */}
+                          {(() => {
+                            let dotColor = "bg-[#2EA248]"; // Default Online Green
+                            let statusTitle = "Online";
+
+                            if (item.isOnline === false) {
+                              dotColor = "bg-gray-400"; // Offline Grey
+                              statusTitle = "Offline";
+                            } else if (item.isAvailable === false) {
+                              dotColor = "bg-amber-500"; // Busy Yellow/Amber
+                              statusTitle = "Busy";
+                            }
+
+                            return (
+                              <span
+                                className={`absolute bottom-0.5 right-0.5 w-3 h-3 border-2 border-white rounded-full z-1 shadow-xs ${dotColor}`}
+                                title={statusTitle}
+                              />
+                            );
+                          })()}
+                        </div>
+
+                        {/* Rating Stars + Numerical Value underneath the image */}
+                        <div className="flex flex-col items-center mt-1.5 justify-center">
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((starIndex) => {
+                              const ratingVal = parseFloat(item.rating || 5);
+                              const isFilled = starIndex <= Math.round(ratingVal);
+                              return (
+                                <Star
+                                  key={starIndex}
+                                  size={9}
+                                  className={isFilled ? "fill-yellow-400 text-yellow-400 flex-shrink-0" : "text-gray-300 flex-shrink-0"}
+                                />
+                              );
+                            })}
+                          </div>
+                          <span className="text-[10px] font-bold text-gray-500 mt-0.5">{item.rating}</span>
+                        </div>
+                      </div>
+
+                      {/* Column 2: Info Details */}
+                      <div className="flex-1 min-w-0 flex flex-col gap-0.5 justify-center">
+                        
+                        {/* Name + Verified Row */}
+                        <div className="flex items-center gap-1 flex-wrap min-w-0">
+                          <h2 className="font-bold text-[#1d2340] text-sm leading-tight truncate">
+                            {item.name}
+                          </h2>
+                          <CheckCircle
+                            size={12}
+                            className="text-[#2EA248] fill-[#EBF7EE] flex-shrink-0"
+                          />
+                        </div>
+
+                        {/* Follow Button */}
+                        <div className="flex mt-0.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFollow(item.name);
+                            }}
+                            className={`text-[8.5px] font-bold px-2 py-0.5 rounded-md transition-all uppercase tracking-wider cursor-pointer active:scale-95 flex items-center gap-0.5 ${
+                              isFollowed
+                                ? "bg-green-50 text-green-600 border border-green-200"
+                                : "bg-gray-50 border border-gray-100 text-gray-500 hover:bg-gray-100"
+                            }`}
+                          >
+                            {isFollowed ? "Following" : "+ Follow"}
+                          </button>
+                        </div>
+
+                        {/* Specialization List */}
+                        <p className="text-[10px] text-gray-500 leading-snug font-medium mt-0.5 line-clamp-2">
+                          {item.skill}
+                        </p>
+
+                        {/* Experience Icons Row */}
+                        <div className="flex items-center gap-1 text-[9px] text-gray-400 font-semibold mt-1 flex-wrap min-w-0">
+                          <div className="flex items-center gap-0.5 min-w-0">
+                            <Briefcase size={11} className="text-gray-400 flex-shrink-0" />
+                            <span className="truncate">EXP: {item.exp?.toUpperCase().replace(" EXPERIENCE YEARS", "").replace(" YEARS", "") || "5"}+ YRS</span>
+                          </div>
+                          <span className="text-gray-200 font-light">|</span>
+                          <div className="flex items-center gap-0.5 min-w-0">
+                            <Calendar size={11} className="text-gray-400 flex-shrink-0" />
+                            <span className="truncate">EXPERIENCE YEARS</span>
+                          </div>
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                    {/* Column 3: Price & Action Buttons */}
+                    <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0">
+                      {/* Price displayed above Chat button */}
+                      <span className="font-extrabold text-[#ff7448] text-xs mb-0.5">
+                        {item.price}
+                      </span>
+
+                      <button
+                        disabled={loadingAstro === item.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartChat(item);
+                        }}
+                        className="w-[82px] h-[36px] rounded-[12px] bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                      >
+                        <MessageCircle size={11} className="fill-current" />
+                        <span>Chat</span>
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })
             )}
           </div>
 

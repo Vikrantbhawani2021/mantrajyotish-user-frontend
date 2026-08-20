@@ -46,6 +46,7 @@ export default function AstroHistory() {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("all"); // 'all', 'chat', 'call'
 
   const getUserId = () => {
     try {
@@ -163,6 +164,34 @@ export default function AstroHistory() {
           </div>
         </div>
 
+        {/* Filter Tabs */}
+        <div className="flex justify-around bg-white border-b border-gray-150 py-3 text-sm font-semibold text-gray-500 shadow-sm">
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`pb-1.5 px-4 cursor-pointer border-b-2 transition-all duration-200 outline-none ${
+              activeTab === "all" ? "text-orange-500 border-orange-500" : "border-transparent"
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`pb-1.5 px-4 cursor-pointer border-b-2 transition-all duration-200 outline-none ${
+              activeTab === "chat" ? "text-orange-500 border-orange-500" : "border-transparent"
+            }`}
+          >
+            Chats
+          </button>
+          <button
+            onClick={() => setActiveTab("call")}
+            className={`pb-1.5 px-4 cursor-pointer border-b-2 transition-all duration-200 outline-none ${
+              activeTab === "call" ? "text-orange-500 border-orange-500" : "border-transparent"
+            }`}
+          >
+            Calls
+          </button>
+        </div>
+
         {/* Cards */}
         <div className="p-4 space-y-4">
           {loading ? (
@@ -170,19 +199,21 @@ export default function AstroHistory() {
               <span className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></span>
             </div>
           ) : (
-            history.map((item) => (
-              <div 
-                key={item.id} 
-                onClick={() => {
-                  if (item.mode === "chat" && item.status === "Completed") {
-                    navigate(`/chat-history/${item.id}`, { state: { session: item } });
-                  }
-                }}
-                className={item.mode === "chat" && item.status === "Completed" ? "cursor-pointer" : ""}
-              >
-                <HistoryCard item={item} />
-              </div>
-            ))
+            history
+              .filter(item => activeTab === "all" || item.mode === activeTab)
+              .map((item) => (
+                <div 
+                  key={item.id} 
+                  onClick={() => {
+                    if (item.mode === "chat" && item.status?.toLowerCase() === "completed") {
+                      navigate(`/chat-history/${item.id}`, { state: { session: item } });
+                    }
+                  }}
+                  className={item.mode === "chat" && item.status?.toLowerCase() === "completed" ? "cursor-pointer" : ""}
+                >
+                  <HistoryCard item={item} />
+                </div>
+              ))
           )}
         </div>
 

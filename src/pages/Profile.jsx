@@ -114,6 +114,12 @@ function Profile() {
 
             <MenuItem
               icon={<FiClock />}
+              title="Astro History (Chat & Calls)"
+              onClick={() => navigate("/astro-history")}
+            />
+
+            <MenuItem
+              icon={<FiClock />}
               title="Booking History"
               onClick={() => navigate("/booking-history")}
             />

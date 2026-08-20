@@ -27,17 +27,34 @@ function Bottomnav() {
           <span className="text-[11px] mt-1">Home</span>
         </NavLink>
 
-        <NavLink
-          to="/chat"
-          className={({ isActive }) =>
-            `flex flex-col items-center flex-1 ${
-              isActive ? "text-orange-500" : "text-[#8E90A6]"
-            }`
+        {(() => {
+          const activeChatStr = localStorage.getItem("active_chat_session");
+          let chatPath = "/chat";
+          let chatState = null;
+          if (activeChatStr) {
+            try {
+              const active = JSON.parse(activeChatStr);
+              if (active && active.name && active.sessionId) {
+                chatPath = `/chat-session/${active.name}`;
+                chatState = { astrologer: { name: active.name }, sessionId: active.sessionId };
+              }
+            } catch {}
           }
-        >
-          <FaComments size={22} />
-          <span className="text-[11px] mt-1">Chat</span>
-        </NavLink>
+          return (
+            <NavLink
+              to={chatPath}
+              state={chatState}
+              className={({ isActive }) =>
+                `flex flex-col items-center flex-1 ${
+                  isActive ? "text-orange-500" : "text-[#8E90A6]"
+                }`
+              }
+            >
+              <FaComments size={22} />
+              <span className="text-[11px] mt-1">Chat</span>
+            </NavLink>
+          );
+        })()}
 
         <NavLink
           to="/liveastro"

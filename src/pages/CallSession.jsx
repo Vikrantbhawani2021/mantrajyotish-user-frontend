@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { BACKEND_URL } from "../config/backend";
 import { getBalance } from "../api/wallet";
 import { endVideoSession, rateVideoSession, callRate } from "../api/video";
+import { sendMessage as sendChatApi, getHistory as getChatHistoryApi, uploadImage } from "../api/chat";
 
 export default function CallSession() {
   const navigate = useNavigate();
@@ -35,19 +36,102 @@ export default function CallSession() {
   const [showDetailsDropdown, setShowDetailsDropdown] = useState(false);
   const [isSwapped, setIsSwapped] = useState(false);
 
-  const sendInCallMessage = (e) => {
+  const sendInCallMessage = async (e) => {
     if (e) e.preventDefault();
     if (!inCallInput.trim()) return;
     
-    const newMessage = {
-      id: Date.now(),
-      sender: "user",
-      text: inCallInput.trim(),
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    };
-    
-    setInCallMessages(prev => [...prev, newMessage]);
+    const text = inCallInput.trim();
     setInCallInput("");
+    
+    // Add locally for instant UI update
+    const tempId = Math.random().toString();
+    setInCallMessages((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        sender: "user",
+        text: text,
+        image: null,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      }
+    ]);
+
+    // Send via socket
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("send_message", {
+        sessionId,
+        chatId: sessionId,
+        roomId: sessionId,
+        senderId: userId,
+        senderType: "USER",
+        text: text,
+        messageType: "text"
+      });
+    }
+    // Persist via REST API
+    try {
+      await sendChatApi({
+        sessionId,
+        senderId: userId,
+        senderType: "USER",
+        text: text,
+        messageType: "text"
+      });
+    } catch (err) {
+      console.error("Failed to persist message:", err);
+    }
+  };
+
+  // File Upload Handler
+  const handleInCallFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formDataObj = new FormData();
+    formDataObj.append("image", file);
+    try {
+      showToast("Uploading image...", "info", 3000);
+      const resData = await uploadImage(formDataObj);
+      if (resData && resData.success) {
+        const imageUrl = resData.data.imageUrl || resData.imageUrl || resData.data.url;
+        
+        // Add locally for instant UI update
+        const tempId = Math.random().toString();
+        setInCallMessages((prev) => [
+          ...prev,
+          {
+            id: tempId,
+            sender: "user",
+            text: "",
+            image: imageUrl,
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          }
+        ]);
+
+        if (socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit("send_message", {
+            sessionId,
+            chatId: sessionId,
+            roomId: sessionId,
+            senderId: userId,
+            senderType: "USER",
+            text: "",
+            mediaUrl: imageUrl,
+            messageType: "image"
+          });
+        }
+        await sendChatApi({
+          sessionId,
+          senderId: userId,
+          senderType: "USER",
+          text: "",
+          mediaUrl: imageUrl,
+          messageType: "image"
+        });
+      }
+    } catch (err) {
+      console.error("Image upload error:", err);
+      showToast("Failed to upload image.", "error", 4000);
+    }
   };
 
   // Stats & controls
@@ -92,8 +176,10 @@ export default function CallSession() {
   // Local Timer tick for smooth UI counter
   useEffect(() => {
     if (sessionStatus === "ACTIVE") {
+      const start = location.state?.session?.startTime || new Date();
       timerRef.current = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
+        const elapsed = Math.max(0, Math.floor((new Date() - new Date(start)) / 1000));
+        setElapsedSeconds(elapsed);
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -135,6 +221,26 @@ export default function CallSession() {
   useEffect(() => {
     sessionStatusRef.current = sessionStatus;
   }, [sessionStatus]);
+
+  // Load message history on active call session
+  useEffect(() => {
+    if (sessionStatus === "ACTIVE" && sessionId) {
+      getChatHistoryApi(sessionId)
+        .then((res) => {
+          if (res && res.success && res.data) {
+            const formatted = res.data.map((msg) => ({
+              id: msg._id,
+              sender: String(msg.senderType).toLowerCase() === "user" ? "user" : "astrologer",
+              text: msg.text,
+              image: msg.mediaUrl || null,
+              time: new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            }));
+            setInCallMessages(formatted);
+          }
+        })
+        .catch((err) => console.error("Error loading call chat history:", err));
+    }
+  }, [sessionStatus, sessionId]);
 
   // Show a non-blocking toast banner that auto-dismisses
   const showToast = (text, type = "info", durationMs = 5000) => {
@@ -270,6 +376,28 @@ export default function CallSession() {
     };
     socket.on("peer_media_state_changed", handlePeerMediaState);
     socket.on("media_state_changed", handlePeerMediaState);
+
+    // Socket message receiver
+    socket.on("receive_message", (msg) => {
+      const msgSessionId = msg.sessionId || msg.chatId || msg.roomId || msg.session || "";
+      if (String(msgSessionId) !== String(sessionId)) return;
+      const sender = String(msg.senderType || msg.role || "ASTROLOGER").toLowerCase() === "user" ? "user" : "astrologer";
+      
+      setInCallMessages((prev) => {
+        const exists = prev.some((m) => String(m.id) === String(msg._id) || (m.text === msg.text && m.sender === sender));
+        if (exists) return prev;
+        return [
+          ...prev,
+          {
+            id: msg._id || Math.random().toString(),
+            sender,
+            text: msg.text || msg.message || "",
+            image: msg.mediaUrl || null,
+            time: new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          }
+        ];
+      });
+    });
 
     // Call End event handlers
     const endCallFlow = (data) => {
@@ -1033,7 +1161,13 @@ export default function CallSession() {
                           ? "bg-[#FF6F3D] text-white rounded-tr-none" 
                           : "bg-white/10 text-slate-100 rounded-tl-none border border-white/5"
                       }`}>
-                        <p className="whitespace-pre-line break-words font-medium">{msg.text}</p>
+                        {msg.image ? (
+                          <div className="rounded-lg overflow-hidden max-w-[200px] mb-1">
+                            <img src={msg.image} alt="Uploaded" className="w-full h-auto object-cover max-h-48" />
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-line break-words font-medium">{msg.text}</p>
+                        )}
                         <span className={`text-[8.5px] block text-right mt-1 opacity-70 ${isUser ? "text-orange-100" : "text-slate-400"}`}>
                           {msg.time}
                         </span>
@@ -1049,6 +1183,20 @@ export default function CallSession() {
                 className="p-4 bg-[#1F2937] border-t border-white/5 flex items-center gap-2 flex-shrink-0"
               >
                 <input
+                  type="file"
+                  id="in-call-file-upload"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleInCallFileUpload}
+                />
+                <label 
+                  htmlFor="in-call-file-upload"
+                  className="w-11 h-11 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors active:scale-95 border border-white/10 flex-shrink-0"
+                  title="Upload Image"
+                >
+                  <Plus size={18} />
+                </label>
+                <input
                   type="text"
                   value={inCallInput}
                   onChange={(e) => setInCallInput(e.target.value)}
@@ -1057,7 +1205,7 @@ export default function CallSession() {
                 />
                 <button
                   type="submit"
-                  className="w-11 h-11 rounded-full bg-[#FF6F3D] hover:bg-[#e05e30] flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-md shadow-orange-500/20"
+                  className="w-11 h-11 rounded-full bg-[#FF6F3D] hover:bg-[#e05e30] flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-md shadow-orange-500/20 flex-shrink-0"
                 >
                   <Send size={15} className="fill-white translate-x-[1px]" />
                 </button>

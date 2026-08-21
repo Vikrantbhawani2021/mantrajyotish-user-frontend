@@ -143,7 +143,7 @@ function ChatAstrologerCard({ item, isFollowed, toggleFollow, handleStartChat, l
       </div>
 
       {/* Column 3: Price & Action Buttons */}
-      <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0">
+      <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0 ml-auto">
         {/* Price displayed above Chat button */}
         <span className="font-extrabold text-[#ff7448] text-xs mb-0.5">
           {item.price}
@@ -361,7 +361,7 @@ export default function Chat() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search astrologers..."
-                className="flex-1 bg-transparent outline-none px-3 text-sm text-gray-700 placeholder-gray-400"
+                className="flex-1 min-w-0 bg-transparent outline-none px-3 text-sm text-gray-700 placeholder-gray-400"
               />
               {/* Filter Action Icon */}
               <button 

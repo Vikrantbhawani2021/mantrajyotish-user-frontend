@@ -173,7 +173,7 @@ function Call() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search astrologers..."
-                className="flex-1 bg-transparent outline-none px-3 text-sm text-gray-700 placeholder-gray-400"
+                className="flex-1 min-w-0 bg-transparent outline-none px-3 text-sm text-gray-700 placeholder-gray-400"
               />
               {/* Filter Action Icon */}
               <button 

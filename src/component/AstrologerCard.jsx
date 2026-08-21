@@ -345,11 +345,6 @@ function AstrologerCard({ item }) {
                 <Briefcase size={11} className="text-gray-400 flex-shrink-0" />
                 <span className="truncate">EXP: {data.experience?.toUpperCase().replace(" EXPERIENCE YEARS", "").replace(" YEARS", "") || "5"}+ YRS</span>
               </div>
-              <span className="text-gray-200 font-light">|</span>
-              <div className="flex items-center gap-0.5 min-w-0">
-                <Calendar size={11} className="text-gray-400 flex-shrink-0" />
-                <span className="truncate">EXPERIENCE YEARS</span>
-              </div>
             </div>
 
           </div>
@@ -357,7 +352,7 @@ function AstrologerCard({ item }) {
         </div>
 
         {/* Column 3: Price & Action Buttons */}
-        <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0">
+        <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0 ml-auto">
           {/* Price displayed above Audio call button */}
           <span className="font-extrabold text-[#ff7448] text-xs mb-0.5">
             {data.price}

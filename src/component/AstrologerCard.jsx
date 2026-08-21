@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useAstrologerPresence } from "../hooks/useAstrologerPresence";
 import { CheckCircle, Star, Phone, Video, Wallet, X, AlertTriangle, Briefcase, Calendar } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -68,10 +69,15 @@ function RechargeModal({ astrologerName, rate, currentBalance, onClose, onRechar
 }
 
 function AstrologerCard({ item }) {
+  const presenceStatus = useAstrologerPresence(item?.id || item?._id);
   const { isLoggedIn, triggerLoginModal } = useAuth();
   const navigate = useNavigate();
   const [loadingCall, setLoadingCall] = useState(null); // "AUDIO" | "VIDEO" | null
   const [rechargeModal, setRechargeModal] = useState(null); // { rate, currentBalance }
+  const [customPopup, setCustomPopup] = useState(null); // { title, message, type, onConfirm }
+  const showCustomPopup = (title, message, type = "info", onConfirm = null) => {
+    setCustomPopup({ title, message, type, onConfirm });
+  };
 
   const data = item || {
     name: "Sumit Kumar",
@@ -160,13 +166,17 @@ function AstrologerCard({ item }) {
         resData = await requestVideoSession({ userId, astrologerId: astroId, callType: type, walletBalance: currentBalance });
 
         if (!resData || !resData.success) {
-          alert(resData?.message || "Failed to initiate call. Please try again.");
+          showCustomPopup(
+            resData?.message?.includes("offline") ? "Astrologer Offline" : "Request Failed", 
+            resData?.message || "Failed to initiate call. Please try again.", 
+            "error"
+          );
           setLoadingCall(null);
           return;
         }
       } catch (fetchErr) {
         console.error("Failed to connect to backend for call request:", fetchErr);
-        alert("Network error. Please check your connection and try again.");
+        showCustomPopup("Network Error", "Network error. Please check your connection and try again.", "error");
         setLoadingCall(null);
         return;
       }
@@ -186,7 +196,7 @@ function AstrologerCard({ item }) {
       });
     } catch (error) {
       console.error("Start Call Error:", error);
-      alert("An unexpected error occurred. Please try again.");
+      showCustomPopup("Error", "An unexpected error occurred. Please try again.", "error");
       setLoadingCall(null);
     } finally {
       setLoadingCall(null);
@@ -234,10 +244,10 @@ function AstrologerCard({ item }) {
                   let ribbonBg = "bg-green-500";
                   let ribbonText = "ONLINE";
 
-                  if (data.isOnline === false) {
+                  if (presenceStatus === "OFFLINE") {
                     ribbonBg = "bg-gray-400";
                     ribbonText = "OFFLINE";
-                  } else if (data.isAvailable === false || data.isBusy === true) {
+                  } else if (presenceStatus === "BUSY") {
                     ribbonBg = "bg-amber-500";
                     ribbonText = "BUSY";
                   }
@@ -260,10 +270,10 @@ function AstrologerCard({ item }) {
                 let dotColor = "bg-[#2EA248]"; // Default Online Green
                 let statusTitle = "Online";
 
-                if (data.isOnline === false) {
+                if (presenceStatus === "OFFLINE") {
                   dotColor = "bg-gray-400"; // Offline Grey
                   statusTitle = "Offline";
-                } else if (data.isAvailable === false || data.isBusy === true) {
+                } else if (presenceStatus === "BUSY") {
                   dotColor = "bg-amber-500"; // Busy Yellow/Amber
                   statusTitle = "Busy";
                 }
@@ -373,6 +383,45 @@ function AstrologerCard({ item }) {
         </div>
 
       </div>
+
+      {/* Custom Notification Modal */}
+      {customPopup && (
+        <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] z-[999] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[32px] w-full max-w-[320px] p-6 text-center shadow-2xl animate-fade-in flex flex-col items-center">
+            <div className={`w-16 h-16 rounded-full border-4 flex items-center justify-center shadow-inner mt-2 ${
+              customPopup.type === "error" 
+                ? "bg-red-50 border-red-100/50" 
+                : customPopup.type === "warn"
+                ? "bg-amber-50 border-amber-100/50"
+                : "bg-orange-50 border-orange-100/50"
+            }`}>
+              {customPopup.type === "error" ? (
+                <span className="text-3xl text-red-500 font-bold leading-none">✕</span>
+              ) : customPopup.type === "warn" ? (
+                <span className="text-3xl text-amber-500 font-bold leading-none">⚠️</span>
+              ) : (
+                <span className="text-3xl text-[#FF6F3D] font-bold leading-none">i</span>
+              )}
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mt-5 leading-tight">
+              {customPopup.title}
+            </h3>
+            <p className="text-gray-500 text-xs mt-3 px-2 leading-relaxed">
+              {customPopup.message}
+            </p>
+            <button
+              onClick={() => {
+                const onConfirm = customPopup.onConfirm;
+                setCustomPopup(null);
+                if (onConfirm) onConfirm();
+              }}
+              className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-600 hover:to-orange-500 text-white font-extrabold text-sm rounded-2xl shadow-lg mt-6 active:scale-95 transition-all cursor-pointer animate-fade-in"
+            >
+              Okay
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

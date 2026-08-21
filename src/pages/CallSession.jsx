@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import AgoraRTC from "agora-rtc-sdk-ng";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Star, AlertTriangle, Clock, Wallet, CheckCircle, Plus } from "lucide-react";
+AgoraRTC.setLogLevel(3); // 3 = ERROR level only, silences debug/info spam
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Star, AlertTriangle, Clock, Wallet, CheckCircle, Plus, MessageSquare, Send, X, Copy } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { BACKEND_URL } from "../config/backend";
 import { getBalance } from "../api/wallet";
@@ -26,6 +27,28 @@ export default function CallSession() {
   const [ratePerMinute, setRatePerMinute] = useState(astrologer?.priceRaw || 0);
   // Non-blocking in-screen toast (replaces all browser alert() calls)
   const [toastMessage, setToastMessage] = useState(null); // { text, type: 'info'|'warn'|'error' }
+  const [showInCallChat, setShowInCallChat] = useState(false);
+  const [inCallMessages, setInCallMessages] = useState([
+    { id: 1, sender: "astrologer", text: "Hello! How can I help you today?", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+  ]);
+  const [inCallInput, setInCallInput] = useState("");
+  const [showDetailsDropdown, setShowDetailsDropdown] = useState(false);
+  const [isSwapped, setIsSwapped] = useState(false);
+
+  const sendInCallMessage = (e) => {
+    if (e) e.preventDefault();
+    if (!inCallInput.trim()) return;
+    
+    const newMessage = {
+      id: Date.now(),
+      sender: "user",
+      text: inCallInput.trim(),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+    
+    setInCallMessages(prev => [...prev, newMessage]);
+    setInCallInput("");
+  };
 
   // Stats & controls
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -238,13 +261,15 @@ export default function CallSession() {
     });
 
     // Peer media state updates
-    socket.on("peer_media_state_changed", (data) => {
+    const handlePeerMediaState = (data) => {
       console.log("Peer media state changed:", data);
       if (data) {
         if (data.isAudioMuted !== undefined) setPeerAudioMuted(data.isAudioMuted);
         if (data.isVideoMuted !== undefined) setPeerVideoMuted(data.isVideoMuted);
       }
-    });
+    };
+    socket.on("peer_media_state_changed", handlePeerMediaState);
+    socket.on("media_state_changed", handlePeerMediaState);
 
     // Call End event handlers
     const endCallFlow = (data) => {
@@ -390,7 +415,12 @@ export default function CallSession() {
       // Create local tracks and publish
       if (mode === "VIDEO") {
         try {
-          const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+          const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
+            {},
+            {
+              facingMode: "user"
+            }
+          );
           localAudioTrackRef.current = audioTrack;
           localVideoTrackRef.current = videoTrack;
 
@@ -658,9 +688,9 @@ export default function CallSession() {
             {remainingBalance !== null && (
               <>
                 <span className="text-white/20 text-xs">|</span>
-                <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-2 py-0.5 border border-white/10">
-                  <span className={`text-xs font-extrabold ${remainingBalance < ratePerMinute * 2 ? "text-rose-400" : "text-emerald-400"}`}>
-                    Bal: ₹{remainingBalance.toFixed(0)}
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2.5 py-0.5 text-emerald-400 shadow-sm whitespace-nowrap">
+                  <span className="text-[10px] font-black uppercase tracking-wide">
+                    Bal: ₹{remainingBalance.toFixed(2)}
                   </span>
                   <button
                     onClick={() => navigate("/deposit")}
@@ -672,6 +702,92 @@ export default function CallSession() {
               </>
             )}
           </div>
+
+          {/* Dropdown Details Option Toggle Button */}
+          <button
+            onClick={() => setShowDetailsDropdown(!showDetailsDropdown)}
+            className="pointer-events-auto bg-slate-900/75 hover:bg-slate-900/90 backdrop-blur-xl mt-3 px-3 py-1 rounded-full border border-white/10 flex items-center gap-1.5 shadow-lg text-[10px] font-bold text-gray-200 cursor-pointer active:scale-95 transition-all"
+          >
+            <span>Astrologer Details</span>
+            <svg 
+              className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-300 ${showDetailsDropdown ? "rotate-180" : ""}`}
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor" 
+              strokeWidth="2.5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* Expandable Details Dropdown Card */}
+          {showDetailsDropdown && (
+            <div className="pointer-events-auto bg-slate-950/85 backdrop-blur-xl rounded-2xl border border-white/10 p-4 mt-2.5 w-full max-w-[320px] shadow-2xl animate-slide-down flex flex-col gap-3 text-left">
+              {/* Astrologer Name */}
+              <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-white/5 pb-2">
+                <span>Astrologer:</span>
+                <span className="font-bold text-white uppercase tracking-wide">{astrologer?.name || "Astrologer"}</span>
+              </div>
+
+              {/* Deduction Rate */}
+              <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-white/5 pb-2">
+                <span>Rate per min:</span>
+                <span className="font-bold text-orange-400">₹{ratePerMinute}/min</span>
+              </div>
+
+              {/* Session ID */}
+              <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-white/5 pb-2">
+                <span>Session ID:</span>
+                <div className="flex items-center gap-1">
+                  <span className="font-mono font-bold text-white select-all">{sessionId || "N/A"}</span>
+                  {sessionId && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(sessionId);
+                      }}
+                      className="text-gray-400 hover:text-white cursor-pointer p-0.5 rounded active:scale-95 transition-all"
+                      title="Copy Session ID"
+                    >
+                      <Copy size={10} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {/* Astrologer Details Grid */}
+              <div className="flex items-center justify-between gap-2 text-center pt-0.5">
+                {/* Skills */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-[7.5px] font-black text-slate-500 tracking-wider uppercase">Skills</span>
+                  <p className="text-[10px] font-extrabold text-white mt-1 leading-tight break-words" title={astrologer?.skills || astrologer?.skill}>
+                    {astrologer?.skills || astrologer?.skill || "Vedic"}
+                  </p>
+                </div>
+                
+                <div className="w-[1px] bg-white/10 h-6 flex-shrink-0"></div>
+                
+                {/* Experience */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-[7.5px] font-black text-slate-500 tracking-wider uppercase">Experience</span>
+                  <p className="text-[10px] font-extrabold text-white mt-1 leading-tight break-words">
+                    {astrologer?.experience || astrologer?.exp || "5 Yrs"}
+                  </p>
+                </div>
+                
+                <div className="w-[1px] bg-white/10 h-6 flex-shrink-0"></div>
+                
+                {/* Rating */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-[7.5px] font-black text-slate-500 tracking-wider uppercase">Rating</span>
+                  <p className="text-[10px] font-extrabold text-white mt-1 flex items-center justify-center gap-0.5 leading-tight break-words">
+                    <Star size={9} className="fill-amber-400 text-amber-400" />
+                    <span>{astrologer?.rating || "4.8"}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Peer muted status badges */}
           {(peerAudioMuted || peerVideoMuted) && (
@@ -696,84 +812,96 @@ export default function CallSession() {
         {isVideo ? (
           <div className="absolute inset-0 w-full h-full bg-slate-950 z-0 overflow-hidden">
             
-            {/* Fullscreen Remote Astrologer Video Stream */}
+            {/* Remote Astrologer Video Stream Container */}
             <div 
-              ref={remoteVideoRef} 
-              className="w-full h-full relative overflow-hidden flex items-center justify-center [&>video]:!object-cover [&>video]:!w-full [&>video]:!h-full [&>div]:!h-full [&>div]:!w-full"
+              onClick={() => { if (isSwapped) setIsSwapped(false); }}
+              className={`${isSwapped 
+                ? "absolute bottom-24 right-4 w-28 h-40 bg-slate-900 rounded-2xl overflow-hidden border-2 border-white/20 z-30 shadow-2xl transition-all cursor-pointer" 
+                : "absolute inset-0 w-full h-full bg-slate-950 z-0 overflow-hidden"
+              } flex items-center justify-center`}
             >
+              <div 
+                ref={remoteVideoRef} 
+                className="w-full h-full relative overflow-hidden flex items-center justify-center [&>video]:!object-cover [&>video]:!w-full [&>video]:!h-full [&>div]:!h-full [&>div]:!w-full"
+              />
               {(!hasRemoteVideo || peerVideoMuted) && (
-                <div className="absolute inset-0 flex flex-col justify-center items-center bg-slate-900 z-10 text-center px-4">
-                  <div className="relative mb-4">
-                    <div className="absolute -inset-4 bg-orange-500/20 rounded-full blur-xl animate-pulse"></div>
+                <div className="absolute inset-0 flex flex-col justify-center items-center bg-slate-900 z-10 text-center px-2">
+                  <div className="relative mb-2">
+                    <div className="absolute -inset-2 bg-orange-500/20 rounded-full blur-lg animate-pulse"></div>
                     <img
                       src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
                       alt={astrologer?.name}
-                      className="w-28 h-28 rounded-full border-2 border-orange-500/60 object-cover shadow-2xl relative z-10"
+                      className={`${isSwapped ? "w-12 h-12" : "w-28 h-28"} rounded-full border border-orange-500/60 object-cover shadow-2xl relative z-10 transition-all`}
                     />
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-1">{astrologer?.name || "Astrologer"}</h3>
-                  <p className="text-xs text-orange-400 font-medium mb-3">
-                    {peerVideoMuted ? "Astrologer's camera is turned off" : "Connecting video stream..."}
-                  </p>
-
-                  {/* Astrologer Extra Details */}
-                  <div className="pt-3 border-t border-white/10 space-y-1 w-full max-w-[200px] mx-auto">
-                    {(astrologer?.skills || astrologer?.skill || astrologer?.specialization) && (
-                      <p className="text-xs text-gray-300 font-medium truncate">
-                        {astrologer?.skills || astrologer?.skill || (Array.isArray(astrologer?.specialization) ? astrologer?.specialization.join(", ") : astrologer?.specialization)}
+                  {!isSwapped && (
+                    <>
+                      <h3 className="text-xl font-bold text-white mb-1">{astrologer?.name || "Astrologer"}</h3>
+                      <p className="text-xs text-orange-400 font-medium mb-3">
+                        {peerVideoMuted ? "Astrologer's camera is turned off" : "Connecting video stream..."}
                       </p>
-                    )}
-                    
-                    <div className="flex items-center justify-center gap-3 text-xs text-gray-400 pt-0.5">
-                      {(astrologer?.experience || astrologer?.exp) && (
-                        <span>Exp: {astrologer?.experience || astrologer?.exp}</span>
-                      )}
-                      {astrologer?.rating && (
-                        <>
-                          <span className="text-white/20">•</span>
-                          <span className="flex items-center gap-0.5">
-                            <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                            {astrologer?.rating}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                      
+                      {/* Astrologer Extra Details */}
+                      <div className="pt-3 border-t border-white/10 space-y-1 w-full max-w-[200px] mx-auto">
+                        {(astrologer?.skills || astrologer?.skill || astrologer?.specialization) && (
+                          <p className="text-xs text-gray-300 font-medium truncate">
+                            {astrologer?.skills || astrologer?.skill || (Array.isArray(astrologer?.specialization) ? astrologer?.specialization.join(", ") : astrologer?.specialization)}
+                          </p>
+                        )}
+                        
+                        <div className="flex items-center justify-center gap-3 text-xs text-gray-400 pt-0.5">
+                          {(astrologer?.experience || astrologer?.exp) && (
+                            <span>Exp: {astrologer?.experience || astrologer?.exp}</span>
+                          )}
+                          {astrologer?.rating && (
+                            <>
+                              <span className="text-white/20">•</span>
+                              <span className="flex items-center gap-0.5">
+                                <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                                {astrologer?.rating}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  {isSwapped && (
+                    <span className="text-[8px] font-bold text-orange-400">Off</span>
+                  )}
+                </div>
+              )}
+
+              {/* Astro Label Badge (Only shown when swapped into PiP) */}
+              {isSwapped && (
+                <div className="absolute bottom-2 left-2 bg-slate-950/70 backdrop-blur-xs px-2 py-0.5 rounded-md text-[9px] font-black text-white z-20 border border-white/10 uppercase tracking-wider">
+                  Astro
                 </div>
               )}
             </div>
 
-            {/* Small Overlay for Astrologer details during Active Video Call */}
-            {hasRemoteVideo && !peerVideoMuted && (
-              <div className="absolute bottom-28 left-4 z-30 bg-slate-950/75 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 max-w-[200px]">
-                <h4 className="text-xs font-bold text-white truncate">{astrologer?.name}</h4>
-                <p className="text-[10px] text-gray-300 truncate mt-0.5">
-                  {astrologer?.skills || astrologer?.skill}
-                </p>
-                <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-1">
-                  {(astrologer?.experience || astrologer?.exp) && (
-                    <span>Exp: {astrologer?.experience || astrologer?.exp}</span>
-                  )}
-                  {astrologer?.rating && (
-                    <span className="flex items-center gap-0.5">
-                      <Star size={10} className="fill-yellow-400 text-yellow-400" />
-                      {astrologer?.rating}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Picture-in-Picture Local Video Tile */}
-            <div className="absolute top-20 right-4 w-28 h-40 bg-slate-900 rounded-2xl overflow-hidden border-2 border-white/20 z-30 shadow-2xl transition-all">
+            {/* Local Video Tile Container */}
+            <div 
+              onClick={() => { if (!isSwapped) setIsSwapped(true); }}
+              className={`${isSwapped 
+                ? "absolute inset-0 w-full h-full bg-slate-950 z-0 overflow-hidden" 
+                : "absolute bottom-24 right-4 w-28 h-40 bg-slate-900 rounded-2xl overflow-hidden border-2 border-white/20 z-30 shadow-2xl transition-all cursor-pointer"
+              }`}
+            >
               <div 
                 ref={localVideoRef} 
-                className="w-full h-full relative overflow-hidden [&>video]:!object-cover [&>video]:!w-full [&>video]:!h-full [&>div]:!h-full [&>div]:!w-full"
+                className="w-full h-full relative overflow-hidden [&>video]:!object-cover [&>video]:!w-full [&>video]:!h-full [&>video]:!transform [&>video]:!scale-x-[-1] [&>div]:!h-full [&>div]:!w-full"
               />
+              
+              {/* "You" Label Badge */}
+              <div className="absolute bottom-2 left-2 bg-slate-950/70 backdrop-blur-xs px-2 py-0.5 rounded-md text-[9px] font-black text-white z-20 border border-white/10 uppercase tracking-wider">
+                You
+              </div>
+
               {isCameraOff && (
                 <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center gap-1.5 text-gray-400 z-10">
-                  <VideoOff size={20} />
-                  <span className="text-[10px] font-bold">Cam Off</span>
+                  <VideoOff size={isSwapped ? 32 : 20} />
+                  <span className={`${isSwapped ? "text-xs" : "text-[10px]"} font-bold`}>Cam Off</span>
                 </div>
               )}
             </div>
@@ -781,57 +909,42 @@ export default function CallSession() {
           </div>
         ) : (
           /* Audio Call Mode View */
-          <div className="flex flex-col items-center justify-center my-auto space-y-6 z-10 mt-24">
-            <div className="relative">
-              <div className="absolute -inset-4 bg-orange-500/20 rounded-full blur-2xl animate-pulse"></div>
-              <div className="w-36 h-36 rounded-full overflow-hidden border-4 border-orange-500 shadow-2xl relative">
-                <img
-                  src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
-                  alt={astrologer?.name}
-                  className="w-full h-full object-cover"
-                />
+          <div className="flex flex-col items-center justify-center my-auto space-y-6 z-10 mt-32">
+            <div className="relative flex flex-col items-center">
+              {/* Pulsating back glow */}
+              <div className="absolute w-44 h-44 bg-gradient-to-tr from-orange-500/10 to-[#FF6F3D]/10 rounded-full blur-2xl animate-pulse"></div>
+              
+              {/* Outer Glowing Border Ring */}
+              <div className="relative w-40 h-40 bg-gradient-to-tr from-orange-500 to-[#FF6F3D] rounded-full p-1 flex items-center justify-center shadow-[0_0_50px_rgba(255,111,61,0.25)]">
+                <div className="w-full h-full rounded-full overflow-hidden border-2 border-slate-950">
+                  <img
+                    src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
+                    alt={astrologer?.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="text-center space-y-2 max-w-xs px-4">
-              <h3 className="text-2xl font-bold tracking-wide">{astrologer?.name || "Astrologer"}</h3>
-              <p className="text-emerald-400 text-xs font-bold tracking-wider uppercase flex items-center gap-1.5 justify-center">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                Active Voice Call
-              </p>
-
-              {/* Astrologer Extra Details */}
-              <div className="pt-3 border-t border-white/10 space-y-1 w-full">
-                {(astrologer?.skills || astrologer?.skill || astrologer?.specialization) && (
-                  <p className="text-xs text-gray-300 font-medium">
-                    {astrologer?.skills || astrologer?.skill || (Array.isArray(astrologer?.specialization) ? astrologer?.specialization.join(", ") : astrologer?.specialization)}
-                  </p>
-                )}
-                
-                <div className="flex items-center justify-center gap-3 text-xs text-gray-400 pt-0.5">
-                  {(astrologer?.experience || astrologer?.exp) && (
-                    <span>Exp: {astrologer?.experience || astrologer?.exp}</span>
-                  )}
-                  {astrologer?.rating && (
-                    <>
-                      <span className="text-white/20">•</span>
-                      <span className="flex items-center gap-0.5">
-                        <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                        {astrologer?.rating}
-                      </span>
-                    </>
-                  )}
-                </div>
+            <div className="text-center space-y-2.5 max-w-xs px-4">
+              <h3 className="text-3xl font-extrabold tracking-tight text-white capitalize">{astrologer?.name || "Astrologer"}</h3>
+              
+              <div className="flex justify-center mt-1">
+                <p className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1.5 justify-center shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  Active Voice Call
+                </p>
               </div>
+
             </div>
           </div>
         )}
 
         {/* Bottom Control Action Bar Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-3 pb-8 pt-12 px-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 pt-12 px-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
           <div className="flex items-center justify-center gap-6">
             
-            {/* Mic Toggle */}
+            {/* 1. Mic Toggle */}
             <button
               onClick={toggleMute}
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer shadow-lg active:scale-95 ${
@@ -839,19 +952,12 @@ export default function CallSession() {
                   ? "bg-rose-500/20 text-rose-400 border border-rose-500/30 backdrop-blur-md shadow-rose-500/5" 
                   : "bg-white/10 hover:bg-white/20 text-white border border-white/10 backdrop-blur-md shadow-black/20"
               }`}
+              title="Toggle Mic"
             >
               {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
             </button>
 
-            {/* End Call Button */}
-            <button
-              onClick={handleEndCall}
-              className="w-16 h-16 rounded-full bg-[#FF3B30] hover:bg-[#ff453a] flex items-center justify-center shadow-[0_0_25px_rgba(255,59,48,0.45)] hover:shadow-[0_0_35px_rgba(255,59,48,0.65)] transform active:scale-90 transition-all duration-300 cursor-pointer border border-red-500/20"
-            >
-              <PhoneOff size={24} className="text-white" />
-            </button>
-
-            {/* Camera Toggle */}
+            {/* 2. Camera Toggle */}
             {isVideo && (
               <button
                 onClick={toggleCamera}
@@ -860,17 +966,106 @@ export default function CallSession() {
                     ? "bg-rose-500/20 text-rose-400 border border-rose-500/30 backdrop-blur-md shadow-rose-500/5" 
                     : "bg-white/10 hover:bg-white/20 text-white border border-white/10 backdrop-blur-md shadow-black/20"
                 }`}
+                title="Toggle Camera"
               >
                 {isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
               </button>
             )}
 
+            {/* 3. Chat/Message Toggle */}
+            <button
+              onClick={() => setShowInCallChat(true)}
+              className="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 backdrop-blur-md shadow-black/20 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-lg active:scale-95"
+              title="Open Chat"
+            >
+              <MessageSquare size={22} />
+            </button>
+
+            {/* 4. End Call Button */}
+            <button
+              onClick={handleEndCall}
+              className="w-16 h-16 rounded-full bg-[#FF3B30] hover:bg-red-600 text-white flex items-center justify-center cursor-pointer shadow-lg active:scale-95 border border-red-400/20 shadow-red-500/10"
+              title="End Call"
+            >
+              <PhoneOff size={24} />
+            </button>
+
           </div>
-          
-          <p className="text-[11px] font-medium text-white/50 tracking-wider">
-            Tap red button to end call
-          </p>
         </div>
+
+        {/* In-Call Chat Overlay Drawer (Matches second screenshot UI) */}
+        {showInCallChat && (
+          <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[2px] z-50 flex flex-col justify-end animate-fade-in pointer-events-auto">
+            <div className="w-full bg-[#111827] rounded-t-[28px] border-t border-white/10 flex flex-col h-[70vh] shadow-2xl overflow-hidden relative text-left">
+              
+              {/* Header */}
+              <div className="bg-[#1F2937] border-b border-white/10 px-4 py-3.5 flex justify-between items-center flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-extrabold text-sm text-white tracking-wide">
+                    Chat with {astrologer?.name || "Astrologer"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowInCallChat(false)}
+                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors active:scale-95"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Message History */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+                <div className="flex justify-center my-1">
+                  <span className="bg-white/5 text-[10px] text-gray-400 px-3 py-0.5 rounded-full font-semibold border border-white/5">
+                    In-Call Message Session
+                  </span>
+                </div>
+                {inCallMessages.map((msg) => {
+                  const isUser = msg.sender === "user";
+                  return (
+                    <div 
+                      key={msg.id} 
+                      className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
+                    >
+                      <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl text-xs leading-relaxed relative ${
+                        isUser 
+                          ? "bg-[#FF6F3D] text-white rounded-tr-none" 
+                          : "bg-white/10 text-slate-100 rounded-tl-none border border-white/5"
+                      }`}>
+                        <p className="whitespace-pre-line break-words font-medium">{msg.text}</p>
+                        <span className={`text-[8.5px] block text-right mt-1 opacity-70 ${isUser ? "text-orange-100" : "text-slate-400"}`}>
+                          {msg.time}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Chat Input Footer */}
+              <form 
+                onSubmit={sendInCallMessage}
+                className="p-4 bg-[#1F2937] border-t border-white/5 flex items-center gap-2 flex-shrink-0"
+              >
+                <input
+                  type="text"
+                  value={inCallInput}
+                  onChange={(e) => setInCallInput(e.target.value)}
+                  placeholder="Type a message..."
+                  className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white placeholder-gray-400 outline-none focus:border-orange-500"
+                />
+                <button
+                  type="submit"
+                  className="w-11 h-11 rounded-full bg-[#FF6F3D] hover:bg-[#e05e30] flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-md shadow-orange-500/20"
+                >
+                  <Send size={15} className="fill-white translate-x-[1px]" />
+                </button>
+              </form>
+
+            </div>
+          </div>
+        )}
 
       </div>
     );
@@ -879,95 +1074,111 @@ export default function CallSession() {
   // 3. COMPLETED Call summary and rating screen
   if (sessionStatus === "COMPLETED") {
     return (
-      <div className="min-h-screen bg-[#F9FAFB] flex justify-center text-gray-900">
-        <div className="w-full max-w-[430px] bg-white min-h-screen flex flex-col justify-between p-6 shadow-xl relative">
+      <div className="min-h-screen bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-6 text-gray-900">
+        <div className="bg-white rounded-[32px] w-full max-w-[340px] p-6 text-center shadow-2xl animate-fade-in flex flex-col items-center">
+          <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 mb-4">
+            <CheckCircle size={32} />
+          </div>
+          <h4 className="text-xl font-bold text-[#1d2340]">Call Session Summary</h4>
+          <p className="text-gray-400 text-xs mt-1">Thank you for consulting {astrologer?.name || "us"}!</p>
           
-          <div className="flex-1 flex flex-col justify-center items-center py-8">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
-              <CheckCircle size={36} className="text-green-600" />
-            </div>
-
-            <h2 className="text-2xl font-bold text-gray-900">Call Finished</h2>
-            <p className="text-sm text-gray-500 mt-1">Thank you for consulting with {astrologer?.name || "us"}</p>
-
-            {/* Receipt Summary Card */}
-            <div className="w-full bg-[#F3F4F6] rounded-3xl p-5 mt-8 space-y-4 border border-gray-100">
-              <div className="flex justify-between items-center text-sm border-b border-gray-200/60 pb-3">
-                <span className="text-gray-500 font-medium">Duration</span>
-                <span className="font-bold text-gray-800">
-                  {(() => {
-                    const secs = summaryData?.totalDurationSeconds || (summaryData?.totalDurationMinutes * 60) || 0;
-                    const mins = Math.floor(secs / 60);
-                    const remSecs = secs % 60;
-                    if (mins === 0) return `${remSecs} sec`;
-                    if (remSecs === 0) return `${mins} min`;
-                    return `${mins} min ${remSecs} sec`;
-                  })()}
+          <div className="w-full bg-[#FAFAFA] rounded-2xl p-4 space-y-3 mt-5 border border-gray-100 text-left">
+            <div className="flex justify-between items-center text-xs text-gray-500">
+              <span>Session ID</span>
+              <div className="flex items-center gap-1">
+                <span className="font-mono text-gray-600 select-all text-[10px]" title={sessionId}>
+                  {summaryData?.sessionCode || sessionId || "N/A"}
                 </span>
-              </div>
-              <div className="flex justify-between items-center text-sm border-b border-gray-200/60 pb-3">
-                <span className="text-gray-500 font-medium">Rate per minute</span>
-                <span className="font-bold text-gray-800">₹{ratePerMinute}/min</span>
-              </div>
-              <div className="flex justify-between items-center text-base pt-1">
-                <span className="text-gray-900 font-bold">Total Charged</span>
-                <span className="font-extrabold text-orange-600 text-lg">₹{Number(summaryData?.totalAmountDeducted || 0).toFixed(2)}</span>
+                {(summaryData?.sessionCode || sessionId) && (
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(summaryData?.sessionCode || sessionId);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 cursor-pointer p-0.5 rounded active:scale-95"
+                    title="Copy Session ID"
+                  >
+                    <Copy size={10} />
+                  </button>
+                )}
               </div>
             </div>
-
-            {/* Rating Stars Form */}
-            <form onSubmit={handleRateSession} className="w-full mt-8 space-y-5">
-              <div className="text-center space-y-2">
-                <label className="block text-sm font-bold text-gray-700">How was your call experience?</label>
-                <div className="flex items-center justify-center gap-2 mt-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRating(star)}
-                      className="focus:outline-none transition-transform hover:scale-110 cursor-pointer active:scale-95"
-                    >
-                      <Star
-                        size={28}
-                        className={`${
-                          star <= rating
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-gray-300"
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Leave a Review (Optional)</label>
-                <textarea
-                  value={review}
-                  onChange={(e) => setReview(e.target.value)}
-                  placeholder="Tell us what you liked or how the astrologer helped..."
-                  className="w-full border border-gray-200 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 h-24 resize-none transition-all placeholder:text-gray-400 bg-gray-50"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingRate}
-                className="w-full py-4 rounded-full bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-600 hover:to-orange-500 text-white text-sm font-bold shadow-lg hover:shadow-orange-500/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-              >
-                {submittingRate ? "Submitting..." : "Submit Review"}
-              </button>
-            </form>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Consultant</span>
+              <span className="font-semibold text-gray-800">{astrologer?.name || "Astrologer"}</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Call Duration</span>
+              <span className="font-semibold text-gray-800">
+                {(() => {
+                  const secs = summaryData?.totalDurationSeconds || (summaryData?.totalDurationMinutes * 60) || 0;
+                  const mins = Math.floor(secs / 60);
+                  const remSecs = secs % 60;
+                  if (mins === 0) return `${remSecs} sec`;
+                  if (remSecs === 0) return `${mins} min`;
+                  return `${mins} min ${remSecs} sec`;
+                })()}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Deduction Rate</span>
+              <span className="font-semibold text-gray-800">₹{ratePerMinute}/min</span>
+            </div>
+            <div className="border-t border-dashed border-gray-200 pt-2 flex justify-between text-sm font-bold text-gray-900">
+              <span>Total Cost</span>
+              <span className="text-[#FF6F3D]">₹{Number(summaryData?.totalAmountDeducted || 0).toFixed(2)}</span>
+            </div>
           </div>
 
-          <div className="text-center">
-            <button
-              onClick={() => navigate("/call")}
-              className="text-sm font-bold text-gray-500 hover:text-gray-700 cursor-pointer active:scale-95 transition-all duration-150"
-            >
-              Skip Rating & Back to Calls
-            </button>
+          {/* Rating Section */}
+          <div className="w-full mt-4 flex flex-col items-center">
+            <span className="text-xs font-bold text-gray-600 mb-2">Rate your consultation</span>
+            <div className="flex gap-1.5 justify-center">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  className="cursor-pointer transform hover:scale-110 active:scale-95 transition-transform"
+                >
+                  <svg
+                    className={`w-7 h-7 ${star <= rating ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M12 17.75l-6.172 3.245 1.179-6.873-4.993-4.867 6.9-1.002L12 2l3.086 6.253 6.9 1.002-4.993 4.867 1.179 6.873z" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+            
+            {/* Review Text Area */}
+            <textarea
+              placeholder="Write a brief review... (optional)"
+              value={review}
+              onChange={(e) => setReview(e.target.value)}
+              className="w-full mt-3.5 p-3 border border-gray-200 rounded-xl text-xs outline-none focus:border-orange-400 resize-none h-16 bg-gray-50/50 text-gray-800"
+            ></textarea>
           </div>
+
+          <button
+            onClick={handleRateSession}
+            disabled={submittingRate}
+            className="w-full mt-5 py-3 bg-[#FF6F3D] hover:bg-[#e05e30] rounded-xl font-bold text-white text-sm shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {submittingRate ? "Submitting..." : "Submit Review & Exit"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              navigate("/call");
+            }}
+            className="mt-3 text-xs font-bold text-gray-400 hover:text-gray-600 cursor-pointer"
+          >
+            Skip Rating & Back to Calls
+          </button>
         </div>
       </div>
     );

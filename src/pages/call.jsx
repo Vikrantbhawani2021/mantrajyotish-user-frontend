@@ -33,9 +33,7 @@ function Call() {
       try {
         const resData = await fetchAllAstrologers();
         console.log("Fetch Astrologers API Response:", resData);
-
         const list = resData.data || (Array.isArray(resData) ? resData : []);
-
         if (resData && resData.success && list && list.length > 0) {
           const formatted = list.map(astro => ({
             id: astro._id || astro.id,
@@ -66,8 +64,10 @@ function Call() {
         setLoading(false);
       }
     };
-
     fetchOnlineAstrologers();
+    // Re-fetch listing every 20 seconds for real-time status updates
+    const interval = setInterval(fetchOnlineAstrologers, 20000);
+    return () => clearInterval(interval);
   }, []);
 
   // Listen for real-time status change broadcast from socket
@@ -97,7 +97,7 @@ function Call() {
     return () => {
       if (socket) socket.disconnect();
     };
-  }, [allAstrologers]);
+  }, []);
 
   // Sync followed astrologers dynamically from localStorage on active filter change
   useEffect(() => {

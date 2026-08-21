@@ -4,7 +4,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
 import { BACKEND_URL } from "../config/backend";
-import { endChat, rateChat, initiateChat, sendMessage } from "../api/chat";
+import { endChat, rateChat, initiateChat, sendMessage, getHistory, getSessionsForUser } from "../api/chat";
 
 const CakeIcon = () => (
   <svg className="w-6 h-6 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -50,6 +50,10 @@ export default function ChatSession() {
   const userId = userObj._id || userObj.id || "";
 
   const [messages, setMessages] = useState([]);
+  const [customPopup, setCustomPopup] = useState(null); // { title, message, type, onConfirm }
+  const showCustomPopup = (title, message, type = "info", onConfirm = null) => {
+    setCustomPopup({ title, message, type, onConfirm });
+  };
   const [showDobModal, setShowDobModal] = useState(() => {
     if (sessionId) {
       const confirmed = localStorage.getItem(`dob_confirmed_${sessionId}`);
@@ -440,11 +444,26 @@ export default function ChatSession() {
     const handleChatEnded = (data) => {
       console.log("Chat ended event received on socket:", data);
       localStorage.removeItem("active_chat_session");
-      alert(data?.message || "This chat session has ended.");
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
-      navigate("/chat");
+      
+      const statusUpper = String(data?.status || data?.session?.status || "COMPLETED").toUpperCase();
+      if (statusUpper === "REJECTED") {
+        showCustomPopup("Request Declined", "This chat request was rejected by the astrologer.", "error", () => navigate("/chat"));
+      } else if (statusUpper === "CANCELLED") {
+        showCustomPopup("Chat Ended", "This chat session has been cancelled.", "info", () => navigate("/chat"));
+      } else {
+        setSessionStatus("COMPLETED");
+        setSummaryData({
+          totalDurationMinutes: data?.session?.totalDurationMinutes || data?.totalDurationMinutes || elapsedMinutes,
+          totalDurationSeconds: data?.session?.totalDurationSeconds || data?.totalDurationSeconds || (elapsedMinutes * 60),
+          totalAmountDeducted: data?.session?.totalAmountDeducted || data?.totalAmountDeducted || (elapsedMinutes * astrologer.priceRaw),
+          astrologerEarnings: data?.session?.astrologerEarnings || data?.astrologerEarnings || 0,
+          sessionCode: data?.session?.sessionCode || data?.sessionCode || null
+        });
+        setShowSummaryModal(true);
+      }
     };
 
     socket.on("chat_ended", handleChatEnded);
@@ -526,16 +545,29 @@ export default function ChatSession() {
               }
               
               if (statusUpper === "COMPLETED" || statusUpper === "ENDED") {
-                alert("This chat session has been completed.");
-              } else if (statusUpper === "REJECTED") {
-                alert("This chat request was rejected by the astrologer.");
-              } else if (statusUpper === "CANCELLED") {
-                alert("This chat session has been cancelled.");
-              } else {
-                alert(`Chat session ended with status: ${statusUpper}`);
+                setSessionStatus("COMPLETED");
+                setSummaryData({
+                  totalDurationMinutes: currentSession.totalDurationMinutes || elapsedMinutes,
+                  totalDurationSeconds: currentSession.totalDurationSeconds || (elapsedMinutes * 60),
+                  totalAmountDeducted: currentSession.totalAmountDeducted || (elapsedMinutes * astrologer.priceRaw),
+                  astrologerEarnings: currentSession.astrologerEarnings || 0,
+                  sessionCode: currentSession.sessionCode || null
+                });
+                setShowSummaryModal(true);
+                return;
               }
               
-              navigate("/chat");
+              let title = "Chat Ended";
+              let msg = "";
+              if (statusUpper === "REJECTED") {
+                title = "Request Declined";
+                msg = "This chat request was rejected by the astrologer.";
+              } else if (statusUpper === "CANCELLED") {
+                msg = "This chat session has been cancelled.";
+              } else {
+                msg = `Chat session ended with status: ${statusUpper}`;
+              }
+              showCustomPopup(title, msg, statusUpper === "REJECTED" ? "error" : "info", () => navigate("/chat"));
               return;
             } else if (statusUpper === "ACTIVE") {
               setSessionStatus("ACTIVE");
@@ -584,14 +616,17 @@ export default function ChatSession() {
           setCurrentSessionId(targetSessionId);
           localStorage.setItem("active_chat_session", JSON.stringify({ name, sessionId: targetSessionId }));
         } else {
-          alert(resData?.message || "Failed to start chat session.");
-          navigate("/chat");
+          showCustomPopup(
+            resData?.message?.includes("offline") ? "Astrologer Offline" : "Request Failed", 
+            resData?.message || "Failed to start chat session.", 
+            "error", 
+            () => navigate("/chat")
+          );
           return;
         }
       } catch (err) {
         console.error("Error initiating chat on DOB confirm:", err);
-        alert("Failed to initiate chat. Please try again.");
-        navigate("/chat");
+        showCustomPopup("Error", "Failed to initiate chat. Please try again.", "error", () => navigate("/chat"));
         return;
       }
     }
@@ -681,7 +716,7 @@ export default function ChatSession() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file only.");
+      showCustomPopup("Invalid File", "Please select an image file only.", "warn");
       return;
     }
 
@@ -705,11 +740,11 @@ export default function ChatSession() {
             });
           }
         } else {
-          alert(resData?.message || "Failed to upload image.");
+          showCustomPopup("Upload Failed", resData?.message || "Failed to upload image.", "error");
         }
       } catch (err) {
         console.error("Image Upload Error:", err);
-        alert(`Image upload failed: ${err.message}`);
+        showCustomPopup("Upload Error", `Image upload failed: ${err.message}`, "error");
       } finally {
         setLoading(false);
       }
@@ -754,7 +789,7 @@ export default function ChatSession() {
 
   const handleRateSession = async () => {
     if (rating === 0) {
-      alert("Please select a rating star to submit your review.");
+      showCustomPopup("Rating Required", "Please select a rating star to submit your review.", "warn");
       return;
     }
     setSubmittingRate(true);
@@ -1255,11 +1290,24 @@ export default function ChatSession() {
               <p className="text-gray-400 text-xs mt-1">Thank you for consulting {astrologer.name}!</p>
               
               <div className="w-full bg-[#FAFAFA] rounded-2xl p-4 space-y-3 mt-5 border border-gray-100">
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between items-center text-xs text-gray-500">
                   <span>Session ID</span>
-                  <span className="font-mono text-gray-600 select-all text-[10px]" title={cleanSessionId}>
-                    {summaryData?.sessionCode || cleanSessionId || "N/A"}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-gray-600 select-all text-[10px]" title={cleanSessionId}>
+                      {summaryData?.sessionCode || cleanSessionId || "N/A"}
+                    </span>
+                    {(summaryData?.sessionCode || cleanSessionId) && (
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(summaryData?.sessionCode || cleanSessionId);
+                        }}
+                        className="text-gray-400 hover:text-gray-600 cursor-pointer p-0.5 rounded active:scale-95"
+                        title="Copy Session ID"
+                      >
+                        <Copy size={10} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Consultant</span>
@@ -1342,6 +1390,45 @@ export default function ChatSession() {
             </div>
           </div>
         )}
+
+     {/* Custom Notification Modal */}
+     {customPopup && (
+       <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px] z-55 flex items-center justify-center p-6">
+         <div className="bg-white rounded-[32px] w-full max-w-[320px] p-6 text-center shadow-2xl animate-fade-in flex flex-col items-center">
+           <div className={`w-16 h-16 rounded-full border-4 flex items-center justify-center shadow-inner mt-2 ${
+             customPopup.type === "error" 
+               ? "bg-red-50 border-red-100/50" 
+               : customPopup.type === "warn"
+               ? "bg-amber-50 border-amber-100/50"
+               : "bg-orange-50 border-orange-100/50"
+           }`}>
+             {customPopup.type === "error" ? (
+               <span className="text-3xl text-red-500 font-bold leading-none">✕</span>
+             ) : customPopup.type === "warn" ? (
+               <span className="text-3xl text-amber-500 font-bold leading-none">⚠️</span>
+             ) : (
+               <span className="text-3xl text-[#FF6F3D] font-bold leading-none">i</span>
+             )}
+           </div>
+           <h3 className="text-lg font-bold text-[#1d2340] mt-5 leading-tight">
+             {customPopup.title}
+           </h3>
+           <p className="text-gray-500 text-xs mt-3 px-2 leading-relaxed">
+             {customPopup.message}
+           </p>
+           <button
+             onClick={() => {
+               const onConfirm = customPopup.onConfirm;
+               setCustomPopup(null);
+               if (onConfirm) onConfirm();
+             }}
+             className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-600 hover:to-orange-500 text-white font-extrabold text-sm rounded-2xl shadow-lg mt-6 active:scale-95 transition-all cursor-pointer"
+           >
+             Okay
+           </button>
+         </div>
+       </div>
+     )}
 
         <style>{`
           @keyframes fadeIn {

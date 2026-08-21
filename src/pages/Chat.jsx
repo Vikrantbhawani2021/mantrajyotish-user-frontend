@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useAstrologerPresence } from "../hooks/useAstrologerPresence";
 import { ArrowLeft, Search, Mic, MessageCircle, Star, CheckCircle, Briefcase, Calendar, SlidersHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Bottomnav from "../component/Bottomnav";
@@ -8,6 +9,161 @@ import { initiateChat } from "../api/chat";
 import CategoryTabs from "../component/CategoryTabs";
 import InsufficientBalanceModal from "../component/InsufficientBalanceModal";
 import { io } from "socket.io-client";
+
+
+function ChatAstrologerCard({ item, isFollowed, toggleFollow, handleStartChat, loadingAstro }) {
+  const presenceStatus = useAstrologerPresence(item.id || item._id);
+
+  return (
+    <div
+      onClick={() => handleStartChat(item)}
+      className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300 cursor-pointer"
+    >
+      {/* Column 1 & Column 2 Wrapper */}
+      <div className="flex gap-3 flex-1 min-w-0">
+        
+        {/* Column 1: Image + Rating Row */}
+        <div className="flex flex-col items-center flex-shrink-0 gap-2">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-[16px] overflow-hidden border border-orange-100 shadow-inner relative">
+              <img
+                src={item.image}
+                alt={item.name}
+                className="w-full h-full object-cover"
+              />
+              
+              {/* Diagonal Status Ribbon (top-left of avatar) */}
+              {(() => {
+                let ribbonBg = "bg-green-500";
+                let ribbonText = "ONLINE";
+
+                if (presenceStatus === "OFFLINE") {
+                  ribbonBg = "bg-gray-400";
+                  ribbonText = "OFFLINE";
+                } else if (presenceStatus === "BUSY") {
+                  ribbonBg = "bg-amber-500";
+                  ribbonText = "BUSY";
+                }
+
+                return (
+                  <div 
+                    className={`absolute top-0 left-0 w-14 h-3.5 -translate-x-4 translate-y-1 -rotate-45 flex items-center justify-center ${ribbonBg} z-1 shadow-xs`}
+                    title={ribbonText}
+                  >
+                    <span className="text-[5.5px] font-extrabold text-white tracking-wider leading-none text-center">
+                      {ribbonText}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+            
+            {/* Status Indicator Dot (bottom-right of avatar) */}
+            {(() => {
+              let dotColor = "bg-[#2EA248]"; // Default Online Green
+              let statusTitle = "Online";
+
+              if (presenceStatus === "OFFLINE") {
+                dotColor = "bg-gray-400"; // Offline Grey
+                statusTitle = "Offline";
+              } else if (presenceStatus === "BUSY") {
+                dotColor = "bg-amber-500"; // Busy Yellow/Amber
+                statusTitle = "Busy";
+              }
+
+              return (
+                <span
+                  className={`absolute bottom-0.5 right-0.5 w-3 h-3 border-2 border-white rounded-full z-1 shadow-xs ${dotColor}`}
+                  title={statusTitle}
+                />
+              );
+            })()}
+          </div>
+
+          {/* Rating Stars + Numerical Value underneath the image */}
+          <div className="flex flex-col items-center mt-1.5 justify-center">
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((starIndex) => {
+                const ratingVal = parseFloat(item.rating || 5);
+                const isFilled = starIndex <= Math.round(ratingVal);
+                return (
+                  <span key={starIndex} className={isFilled ? "text-yellow-400 text-[10px]" : "text-gray-300 text-[10px]"}>★</span>
+                );
+              })}
+            </div>
+            <span className="text-[10px] font-bold text-gray-500 mt-0.5">{item.rating}</span>
+          </div>
+        </div>
+
+        {/* Column 2: Info Details */}
+        <div className="flex-1 min-w-0 flex flex-col gap-0.5 justify-center">
+          
+          {/* Name + Verified Row */}
+          <div className="flex items-center gap-1 flex-wrap min-w-0">
+            <h2 className="font-bold text-[#1d2340] text-sm leading-tight truncate">
+              {item.name}
+            </h2>
+            <CheckCircle
+              size={12}
+              className="text-[#2EA248] fill-[#EBF7EE] flex-shrink-0"
+            />
+          </div>
+
+          {/* Follow Button */}
+          <div className="flex mt-0.5">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFollow(item.name);
+              }}
+              className={`text-[8.5px] font-bold px-2 py-0.5 rounded-md transition-all uppercase tracking-wider cursor-pointer active:scale-95 flex items-center gap-0.5 ${
+                isFollowed
+                  ? "bg-green-50 text-green-600 border border-green-200"
+                  : "bg-gray-50 border border-gray-100 text-gray-500 hover:bg-gray-100"
+              }`}
+            >
+              {isFollowed ? "Following" : "+ Follow"}
+            </button>
+          </div>
+
+          {/* Specialization List */}
+          <p className="text-[10px] text-gray-500 leading-snug font-medium mt-0.5 line-clamp-2">
+            {item.skill}
+          </p>
+
+          {/* Experience Icons Row */}
+          <div className="flex items-center gap-1 text-[9px] text-gray-400 font-semibold mt-1 flex-wrap min-w-0">
+            <div className="flex items-center gap-0.5 min-w-0">
+              <span className="truncate">EXP: {item.exp?.toUpperCase().replace(" EXPERIENCE YEARS", "").replace(" YEARS", "") || "5"}+ YRS</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Column 3: Price & Action Buttons */}
+      <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0">
+        {/* Price displayed above Chat button */}
+        <span className="font-extrabold text-[#ff7448] text-xs mb-0.5">
+          {item.price}
+        </span>
+
+        <button
+          disabled={loadingAstro === item.id}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleStartChat(item);
+          }}
+          className="w-[82px] h-[36px] rounded-[12px] bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+        >
+          <span>Chat</span>
+        </button>
+      </div>
+
+    </div>
+  );
+}
 
 export default function Chat() {
   const navigate = useNavigate();
@@ -71,7 +227,11 @@ export default function Chat() {
         setLoading(false);
       }
     };
+    
     fetchOnlineAstrologers();
+    // Re-fetch listing every 20 seconds for real-time status updates
+    const interval = setInterval(fetchOnlineAstrologers, 20000);
+    return () => clearInterval(interval);
   }, []);
 
   // Listen for real-time status change broadcast from socket
@@ -101,7 +261,7 @@ export default function Chat() {
     return () => {
       if (socket) socket.disconnect();
     };
-  }, [allAstrologers]);
+  }, []);
 
   // Multi-criteria live search and filter logic
   useEffect(() => {
@@ -260,170 +420,16 @@ export default function Chat() {
                   : "No active online astrologers found."}
               </div>
             ) : (
-              astrologers.map((item, index) => {
-                const isFollowed = followedAstro.includes(item.name);
-                return (
-                  <div
-                    key={index}
-                    onClick={() => handleStartChat(item)}
-                    className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300 cursor-pointer"
-                  >
-                    {/* Column 1 & Column 2 Wrapper */}
-                    <div className="flex gap-3 flex-1 min-w-0">
-                      
-                      {/* Column 1: Image + Rating Row */}
-                      <div className="flex flex-col items-center flex-shrink-0 gap-2">
-                        <div className="relative">
-                          <div className="w-16 h-16 rounded-[16px] overflow-hidden border border-orange-100 shadow-inner relative">
-                            <img
-                              src={item.image}
-                              alt={item.name}
-                              className="w-full h-full object-cover"
-                            />
-                            
-                            {/* Diagonal Status Ribbon (top-left of avatar) */}
-                            {(() => {
-                              let ribbonBg = "bg-green-500";
-                              let ribbonText = "ONLINE";
-
-                              if (item.isOnline === false) {
-                                ribbonBg = "bg-gray-400";
-                                ribbonText = "OFFLINE";
-                              } else if (item.isAvailable === false) {
-                                ribbonBg = "bg-amber-500";
-                                ribbonText = "BUSY";
-                              }
-
-                              return (
-                                <div 
-                                  className={`absolute top-0 left-0 w-14 h-3.5 -translate-x-4 translate-y-1 -rotate-45 flex items-center justify-center ${ribbonBg} z-1 shadow-xs`}
-                                  title={ribbonText}
-                                >
-                                  <span className="text-[5.5px] font-extrabold text-white tracking-wider leading-none text-center">
-                                    {ribbonText}
-                                  </span>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                          
-                          {/* Status Indicator Dot (bottom-right of avatar) */}
-                          {(() => {
-                            let dotColor = "bg-[#2EA248]"; // Default Online Green
-                            let statusTitle = "Online";
-
-                            if (item.isOnline === false) {
-                              dotColor = "bg-gray-400"; // Offline Grey
-                              statusTitle = "Offline";
-                            } else if (item.isAvailable === false) {
-                              dotColor = "bg-amber-500"; // Busy Yellow/Amber
-                              statusTitle = "Busy";
-                            }
-
-                            return (
-                              <span
-                                className={`absolute bottom-0.5 right-0.5 w-3 h-3 border-2 border-white rounded-full z-1 shadow-xs ${dotColor}`}
-                                title={statusTitle}
-                              />
-                            );
-                          })()}
-                        </div>
-
-                        {/* Rating Stars + Numerical Value underneath the image */}
-                        <div className="flex flex-col items-center mt-1.5 justify-center">
-                          <div className="flex items-center gap-0.5">
-                            {[1, 2, 3, 4, 5].map((starIndex) => {
-                              const ratingVal = parseFloat(item.rating || 5);
-                              const isFilled = starIndex <= Math.round(ratingVal);
-                              return (
-                                <Star
-                                  key={starIndex}
-                                  size={9}
-                                  className={isFilled ? "fill-yellow-400 text-yellow-400 flex-shrink-0" : "text-gray-300 flex-shrink-0"}
-                                />
-                              );
-                            })}
-                          </div>
-                          <span className="text-[10px] font-bold text-gray-500 mt-0.5">{item.rating}</span>
-                        </div>
-                      </div>
-
-                      {/* Column 2: Info Details */}
-                      <div className="flex-1 min-w-0 flex flex-col gap-0.5 justify-center">
-                        
-                        {/* Name + Verified Row */}
-                        <div className="flex items-center gap-1 flex-wrap min-w-0">
-                          <h2 className="font-bold text-[#1d2340] text-sm leading-tight truncate">
-                            {item.name}
-                          </h2>
-                          <CheckCircle
-                            size={12}
-                            className="text-[#2EA248] fill-[#EBF7EE] flex-shrink-0"
-                          />
-                        </div>
-
-                        {/* Follow Button */}
-                        <div className="flex mt-0.5">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFollow(item.name);
-                            }}
-                            className={`text-[8.5px] font-bold px-2 py-0.5 rounded-md transition-all uppercase tracking-wider cursor-pointer active:scale-95 flex items-center gap-0.5 ${
-                              isFollowed
-                                ? "bg-green-50 text-green-600 border border-green-200"
-                                : "bg-gray-50 border border-gray-100 text-gray-500 hover:bg-gray-100"
-                            }`}
-                          >
-                            {isFollowed ? "Following" : "+ Follow"}
-                          </button>
-                        </div>
-
-                        {/* Specialization List */}
-                        <p className="text-[10px] text-gray-500 leading-snug font-medium mt-0.5 line-clamp-2">
-                          {item.skill}
-                        </p>
-
-                        {/* Experience Icons Row */}
-                        <div className="flex items-center gap-1 text-[9px] text-gray-400 font-semibold mt-1 flex-wrap min-w-0">
-                          <div className="flex items-center gap-0.5 min-w-0">
-                            <Briefcase size={11} className="text-gray-400 flex-shrink-0" />
-                            <span className="truncate">EXP: {item.exp?.toUpperCase().replace(" EXPERIENCE YEARS", "").replace(" YEARS", "") || "5"}+ YRS</span>
-                          </div>
-                          <span className="text-gray-200 font-light">|</span>
-                          <div className="flex items-center gap-0.5 min-w-0">
-                            <Calendar size={11} className="text-gray-400 flex-shrink-0" />
-                            <span className="truncate">EXPERIENCE YEARS</span>
-                          </div>
-                        </div>
-
-                      </div>
-
-                    </div>
-
-                    {/* Column 3: Price & Action Buttons */}
-                    <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0">
-                      {/* Price displayed above Chat button */}
-                      <span className="font-extrabold text-[#ff7448] text-xs mb-0.5">
-                        {item.price}
-                      </span>
-
-                      <button
-                        disabled={loadingAstro === item.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartChat(item);
-                        }}
-                        className="w-[82px] h-[36px] rounded-[12px] bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                      >
-                        <MessageCircle size={11} className="fill-current" />
-                        <span>Chat</span>
-                      </button>
-                    </div>
-
-                  </div>
-                );
-              })
+              astrologers.map((item, index) => (
+                <ChatAstrologerCard
+                  key={index}
+                  item={item}
+                  isFollowed={followedAstro.includes(item.name)}
+                  toggleFollow={toggleFollow}
+                  handleStartChat={handleStartChat}
+                  loadingAstro={loadingAstro}
+                />
+              ))
             )}
           </div>
 

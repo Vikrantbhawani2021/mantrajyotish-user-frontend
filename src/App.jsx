@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { initSocket, disconnectSocket } from "./services/socket";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginRequiredModal from "./component/LoginRequiredModal";
@@ -51,6 +52,14 @@ function AppContent() {
   const { isLoggedIn, isProfileCompleted } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      initSocket();
+    } else {
+      disconnectSocket();
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (isLoggedIn && !isProfileCompleted && location.pathname !== "/editprofile" && location.pathname !== "/login" && location.pathname !== "/otp") {

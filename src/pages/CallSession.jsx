@@ -136,6 +136,10 @@ export default function CallSession() {
 
   // Stats & controls
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const elapsedSecondsRef = useRef(0);
+  useEffect(() => {
+    elapsedSecondsRef.current = elapsedSeconds;
+  }, [elapsedSeconds]);
   const [remainingBalance, setRemainingBalance] = useState(() => {
     const saved = localStorage.getItem("wallet_balance");
     return saved ? parseFloat(saved) : 0;
@@ -401,14 +405,14 @@ export default function CallSession() {
 
     // Call End event handlers
     const endCallFlow = (data) => {
-      console.log("🔴 Call ended from backend/astrologer:", data);
+      console.log("🔴 Call ended from backend/astrologer:", data, "elapsedSeconds:", elapsedSecondsRef.current);
       cleanupCall();
       setSessionStatus("COMPLETED");
 
       const sessionObj = data?.session || data?.data || data;
-      const finalDuration = sessionObj?.totalDurationMinutes || Math.max(1, Math.ceil(elapsedSeconds / 60));
+      const finalDuration = sessionObj?.totalDurationMinutes || Math.max(1, Math.ceil(elapsedSecondsRef.current / 60));
       const finalCost = sessionObj?.totalAmountDeducted || (finalDuration * ratePerMinute);
-      const finalSecs = sessionObj?.totalDurationSeconds || (sessionObj?.duration ? sessionObj.duration * 60 : elapsedSeconds);
+      const finalSecs = sessionObj?.totalDurationSeconds || (sessionObj?.duration ? sessionObj.duration * 60 : elapsedSecondsRef.current);
 
       setSummaryData({
         totalDurationSeconds: finalSecs,

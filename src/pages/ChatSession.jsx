@@ -122,6 +122,45 @@ export default function ChatSession() {
     fetchRealDob();
   }, []);
 
+  const [viewportHeight, setViewportHeight] = useState("100dvh");
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (window.visualViewport) {
+        setViewportHeight(`${window.visualViewport.height}px`);
+      } else {
+        setViewportHeight(`${window.innerHeight}px`);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", updateHeight);
+      window.visualViewport.addEventListener("scroll", updateHeight);
+    } else {
+      window.addEventListener("resize", updateHeight);
+    }
+
+    updateHeight();
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", updateHeight);
+        window.visualViewport.removeEventListener("scroll", updateHeight);
+      } else {
+        window.removeEventListener("resize", updateHeight);
+      }
+    };
+  }, []);
+
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      scrollToBottom(true);
+    }, 150);
+  };
+
+
   const cleanSessionId = typeof sessionId === "string"
     ? sessionId
     : (sessionId?._id || sessionId?.sessionId || sessionId?.id || "");
@@ -812,8 +851,11 @@ export default function ChatSession() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex justify-center">
-      <div className="w-full max-w-[850px] h-screen bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between overflow-hidden">
+    <div className="min-h-screen min-h-[100dvh] h-[100dvh] w-full bg-gray-100 flex justify-center overflow-hidden">
+      <div 
+        style={{ height: viewportHeight }}
+        className="w-full max-w-[850px] bg-[#FAFAFA] relative shadow-xl flex flex-col justify-between overflow-hidden"
+      >
         
         {/* Chat Header */}
         <div className="bg-gradient-to-r from-[#ff8f6c] to-[#ff5c33] border-b border-orange-500/20 px-3 py-3 sticky top-0 z-20 text-white shadow-md">
@@ -1148,6 +1190,7 @@ export default function ChatSession() {
               placeholder="Type a message..."
               value={inputMessage}
               rows={1}
+              onFocus={handleInputFocus}
               onChange={(e) => {
                 setInputMessage(e.target.value);
                 e.target.style.height = "36px";

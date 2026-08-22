@@ -1,20 +1,20 @@
 function PlanetCard({ title, description, image, bgColor }) {
   return (
-    <div className={`${bgColor} rounded-3xl p-5 relative overflow-hidden`}>
+    <div className={`${bgColor} rounded-2xl p-4 relative overflow-hidden shadow-xs hover:shadow-sm transition-shadow`}>
       <img
         src={image}
         alt={title}
-        className="absolute top-5 left-5 w-16 h-16 rounded-full object-cover"
+        className="absolute top-4 left-4 w-12 h-12 rounded-full object-cover shadow-xs"
       />
 
-      <div className="ml-24">
-        <h2 className="text-xl font-bold">{title}</h2>
+      <div className="ml-16">
+        <h2 className="text-base font-bold text-gray-800 leading-snug">{title}</h2>
 
-        <p className="text-gray-700 mt-2 text-sm">
+        <p className="text-gray-600 mt-1 text-[11px] leading-relaxed">
           {description}
         </p>
 
-        <button className="mt-4 font-bold text-orange-600">
+        <button className="mt-2 text-xs font-bold text-orange-600 hover:text-orange-700 transition-colors">
           View &gt;&gt;
         </button>
       </div>

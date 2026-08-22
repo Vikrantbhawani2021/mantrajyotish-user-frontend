@@ -1,35 +1,34 @@
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, Pagination } from "swiper/modules";
+import { useNavigate } from "react-router-dom";
 
 import "swiper/css";
 import "swiper/css/pagination";
 
-import watch from "../assets/watch.jpeg";
+import banner1 from "../assets/banner1.png";
+import banner2 from "../assets/banner2.png";
+import banner3 from "../assets/banner3.png";
 
 const banners = [
   {
-    image: watch,
-    title: "IT'S ASTRO TIME",
-    subtitle: "✨ Astro App Online | 5 AM – 12 AM",
-    button: "GET YOUR DAILY HOROSCOPE",
+    image: banner1,
+    route: "/call",
   },
   {
-    image: watch,
-    title: "DAILY HOROSCOPE",
-    subtitle: "🔮 Get Your Daily Prediction",
-    button: "CHECK NOW",
+    image: banner2,
+    route: "/call",
   },
   {
-    image: watch,
-    title: "TALK TO ASTROLOGER",
-    subtitle: "⭐ Chat With Expert Astrologers",
-    button: "BOOK NOW",
+    image: banner3,
+    route: "/chat",
   },
 ];
 
 function Banner() {
+  const navigate = useNavigate();
+
   return (
-    <div className="mx-4 mt-4 rounded-[28px] overflow-hidden">
+    <div className="mx-4 mt-4 rounded-[28px] overflow-hidden cursor-pointer shadow-md">
       <Swiper
         modules={[Autoplay, Pagination]}
         autoplay={{
@@ -40,26 +39,12 @@ function Banner() {
         loop={true}
       >
         {banners.map((item, index) => (
-          <SwiperSlide key={index}>
-            <div className="bg-[#f6d6cf] rounded-[28px] overflow-hidden shadow">
-              <div className="pt-5 px-5 text-center">
-                <h1 className="text-[35px] font-black bg-[#ff8253] leading-none whitespace-nowrap">
-                  {item.title}
-                </h1>
-
-                <p className="text-[#ff8253] font-semibold mt-3 text-[17px]">
-                  {item.subtitle}
-                </p>
-
-                <button className="mt-4 w-full bg-gradient-to-r from-[#ff8253] to-[#ff8253] text-white font-bold py-3 rounded-full text-[17px] shadow-lg">
-                  {item.button}
-                </button>
-              </div>
-
+          <SwiperSlide key={index} onClick={() => navigate(item.route)}>
+            <div className="w-full rounded-[28px] overflow-hidden">
               <img
                 src={item.image}
-                alt={item.title}
-                className="w-full h-[170px] object-contain mt-3"
+                alt="Astro Banner"
+                className="w-full h-auto object-cover block"
               />
             </div>
           </SwiperSlide>

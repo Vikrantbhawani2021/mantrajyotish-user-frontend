@@ -209,8 +209,8 @@ export default function Chat() {
             skill: (astro.specialization && Array.isArray(astro.specialization) ? astro.specialization.join(", ") : astro.specialization) || "Kundli, Vastu, Marriage",
             exp: astro.experience ? `${astro.experience} Years` : "5 Years",
             rating: astro.rating ? String(astro.rating) : "4.8",
-            price: astro.consultationFee ? `₹${astro.consultationFee}/min` : "₹15/min",
-            priceRaw: astro.consultationFee || 15,
+            price: "₹9/min",
+            priceRaw: 9,
             image: astro.profileImage || `https://i.pravatar.cc/200?img=${Math.floor(Math.random() * 70) + 1}`,
           }));
           setAllAstrologers(formatted);

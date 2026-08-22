@@ -36,8 +36,8 @@ export default function ChatSession() {
   const astrologer = location.state?.astrologer || {
     id: "65b839cd49b29e00192e01a4",
     name: name || "Vikram",
-    price: "₹15/min",
-    priceRaw: 15,
+    price: "₹9/min",
+    priceRaw: 9,
     image: "https://randomuser.me/api/portraits/women/65.jpg",
     skill: "Vedic Astrology, Kundli, Tarot Reading",
     exp: "8 Years",

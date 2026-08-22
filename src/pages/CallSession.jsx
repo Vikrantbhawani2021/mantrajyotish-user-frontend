@@ -25,7 +25,7 @@ export default function CallSession() {
   const [sessionStatus, setSessionStatus] = useState("PENDING");
   const [callType, setCallType] = useState(() => String(initialCallType || "AUDIO").toUpperCase());
   const [channelName, setChannelName] = useState(initialChannelName || "");
-  const [ratePerMinute, setRatePerMinute] = useState(astrologer?.priceRaw || 0);
+  const [ratePerMinute, setRatePerMinute] = useState(astrologer?.priceRaw || 9);
   // Non-blocking in-screen toast (replaces all browser alert() calls)
   const [toastMessage, setToastMessage] = useState(null); // { text, type: 'info'|'warn'|'error' }
   const [showInCallChat, setShowInCallChat] = useState(false);

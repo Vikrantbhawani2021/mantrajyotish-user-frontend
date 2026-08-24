@@ -177,6 +177,7 @@ export default function CallSession() {
   const [volumeBoost, setVolumeBoost] = useState(100);
   const [showSettings, setShowSettings] = useState(false);
   const [isBillingPaused, setIsBillingPaused] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
 
   // Refs for Agora RTC
   const clientRef = useRef(null);
@@ -793,6 +794,16 @@ export default function CallSession() {
     }
   };
 
+  const handleToggleSpeaker = () => {
+    const nextState = !isSpeakerOn;
+    setIsSpeakerOn(nextState);
+    const boostLevel = nextState ? 300 : 100; // 300% for Speakerphone, 100% for Normal Earpiece
+    setVolumeBoost(boostLevel);
+    if (remoteUser && remoteUser.audioTrack) {
+      remoteUser.audioTrack.setVolume(boostLevel);
+    }
+  };
+
   const handleRechargeWallet = () => {
     // Emit pause to the backend instantly so the user is not billed during payment
     socketRef.current?.emit("pause_session_billing", { sessionId });
@@ -1221,54 +1232,6 @@ export default function CallSession() {
 
         {/* Bottom Control Action Bar Overlay */}
         <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center pb-5 pt-12 px-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
-          
-          {showSettings && (
-            <div className="bg-slate-900/90 text-white p-4 rounded-2xl mb-4 border border-white/10 shadow-2xl flex flex-col gap-3 max-w-sm w-full backdrop-blur-md text-left">
-              <span className="text-[12px] font-bold text-[#FF6F3D]">Hardware & Speaker Output Settings</span>
-              
-              <div className="flex flex-col gap-1 text-left">
-                <label className="text-[10px] text-gray-400">Microphone Input</label>
-                <select value={selectedMic} onChange={handleMicChange} className="bg-slate-800 text-xs p-1.5 rounded-lg border border-white/10 w-full outline-none focus:border-[#FF6F3D]">
-                  <option value="">Default Mic</option>
-                  {microphones.map(m => <option key={m.deviceId} value={m.deviceId}>{m.label}</option>)}
-                </select>
-              </div>
-              {isVideo && (
-                <div className="flex flex-col gap-1 text-left">
-                  <label className="text-[10px] text-gray-400">Camera Input</label>
-                  <select value={selectedCamera} onChange={handleCameraChange} className="bg-slate-800 text-xs p-1.5 rounded-lg border border-white/10 w-full outline-none focus:border-[#FF6F3D]">
-                    <option value="">Default Camera</option>
-                    {cameras.map(c => <option key={c.deviceId} value={c.deviceId}>{c.label}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="flex flex-col gap-1 text-left">
-                <label className="text-[10px] text-gray-400">Speaker Output (Speaker Option)</label>
-                <select value={selectedSpeaker} onChange={handleSpeakerChange} className="bg-slate-800 text-xs p-1.5 rounded-lg border border-white/10 w-full outline-none focus:border-[#FF6F3D]">
-                  <option value="">Default Speaker</option>
-                  {speakers.map(s => <option key={s.deviceId} value={s.deviceId}>{s.label}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1 text-left mt-1.5">
-                <label className="text-[10px] text-gray-400">Speaker Volume Boost: <span className="font-bold text-[#FF6F3D]">{volumeBoost}%</span></label>
-                <div className="flex gap-2">
-                  {[100, 200, 300, 400].map(vol => (
-                    <button
-                      key={vol}
-                      type="button"
-                      onClick={() => handleVolumeBoost(vol)}
-                      className={`flex-1 text-[10px] py-1 rounded font-bold border transition-all cursor-pointer ${
-                        volumeBoost === vol ? "bg-[#FF6F3D] border-[#FF6F3D] text-white" : "bg-slate-800 border-white/10 hover:bg-slate-700 text-gray-300"
-                      }`}
-                    >
-                      {vol === 100 ? "Normal" : `${vol/100}x Boost`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="flex items-center justify-center gap-6">
             
             {/* 1. Mic Toggle */}
@@ -1308,15 +1271,15 @@ export default function CallSession() {
               <MessageSquare size={22} />
             </button>
 
-            {/* 3.5 Volume Settings Toggle */}
+            {/* Replace Settings button with simple Speaker toggle */}
             <button
-              onClick={() => setShowSettings(!showSettings)}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer shadow-lg active:scale-95 border ${
-                showSettings 
-                  ? "bg-purple-600 border-purple-500 text-white" 
-                  : "bg-white/10 hover:bg-white/20 text-white border border-white/10 backdrop-blur-md shadow-black/20"
+              onClick={handleToggleSpeaker}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-xl cursor-pointer border ${
+                isSpeakerOn 
+                  ? "bg-emerald-500 border-emerald-400 text-white shadow-emerald-500/30" 
+                  : "bg-white/10 hover:bg-white/20 text-white border border-white/20"
               }`}
-              title="Volume & Device Settings"
+              title={isSpeakerOn ? "Turn Speaker Off" : "Turn Speaker On"}
             >
               <Volume2 size={22} />
             </button>

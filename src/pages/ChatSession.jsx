@@ -52,7 +52,7 @@ export default function ChatSession() {
 
   useEffect(() => {
     if (!location.state?.sessionId && routeSessionId) {
-      apiFetch(`/api/chats/details/${routeSessionId}`)
+      apiFetch(`/api/chat/details/${routeSessionId}`)
         .then(res => {
           const session = res.session || res.data || res;
           if (session) {

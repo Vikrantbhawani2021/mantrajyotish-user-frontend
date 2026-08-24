@@ -371,7 +371,9 @@ export default function CallSession() {
           setRemainingBalance(safeBal);
           localStorage.setItem("wallet_balance", safeBal.toFixed(2));
         }
-        if (data.elapsedMinutes !== undefined) {
+        if (data.elapsedSeconds !== undefined) {
+          setElapsedSeconds(data.elapsedSeconds);
+        } else if (data.elapsedMinutes !== undefined) {
           const computedSecs = data.elapsedMinutes * 60;
           if (Math.abs(computedSecs - elapsedSeconds) > 60) {
             setElapsedSeconds(computedSecs);

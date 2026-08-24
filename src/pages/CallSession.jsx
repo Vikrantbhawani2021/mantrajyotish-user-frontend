@@ -684,6 +684,18 @@ export default function CallSession() {
     }
   };
 
+  // Warn user before navigating away during active session
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (sessionStatus === "ACTIVE") {
+        e.preventDefault();
+        e.returnValue = "Your call is still active. Leaving will disconnect you.";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [sessionStatus]);
+
   // Mute local microphone
   const toggleMute = async () => {
     if (localAudioTrackRef.current) {

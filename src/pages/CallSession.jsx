@@ -624,7 +624,7 @@ export default function CallSession() {
         console.log("Astrologer left the channel:", user.uid);
         setHasRemoteVideo(false);
         setRemoteUser(null);
-        handleEndCall();
+        // Do NOT call handleEndCall() here to allow for reconnects and prevent premature session termination on network glitch
       });
 
       // STEP 1: Request mic/camera permissions FIRST — before joining Agora.

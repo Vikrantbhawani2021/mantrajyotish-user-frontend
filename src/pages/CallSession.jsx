@@ -514,7 +514,8 @@ export default function CallSession() {
     const fetchDevices = async () => {
       try {
         const mics = await AgoraRTC.getMicrophones();
-        const cams = await AgoraRTC.getCameras();
+        // Query cameras only if it is a Video Call to prevent audio calls from asking camera permission
+        const cams = callType === "VIDEO" ? await AgoraRTC.getCameras() : [];
         const plays = await AgoraRTC.getPlaybackDevices();
         setMicrophones(mics);
         setCameras(cams);
@@ -526,7 +527,7 @@ export default function CallSession() {
     if (sessionStatus === "ACTIVE") {
       fetchDevices();
     }
-  }, [sessionStatus]);
+  }, [sessionStatus, callType]);
 
   // If direct link load, fetch session from backend
   useEffect(() => {

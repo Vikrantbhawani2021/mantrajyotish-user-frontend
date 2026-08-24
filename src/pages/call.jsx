@@ -8,6 +8,47 @@ import { fetchAllAstrologers } from "../api/astro";
 import { io } from "socket.io-client";
 import { BACKEND_URL } from "../config/backend";
 
+function SkeletonCard() {
+  return (
+    <div className="bg-white rounded-[24px] border border-gray-100 p-3 flex justify-between gap-3 w-full animate-pulse text-left">
+      {/* Column 1 & Column 2 Wrapper */}
+      <div className="flex gap-3 flex-1 min-w-0">
+        
+        {/* Column 1: Avatar + Rating */}
+        <div className="flex flex-col items-center flex-shrink-0 gap-2">
+          <div className="w-16 h-16 rounded-[16px] bg-gray-200" />
+          <div className="w-12 h-3 bg-gray-200 rounded-full mt-1.5" />
+          <div className="w-8 h-2.5 bg-gray-100 rounded-full mt-1" />
+        </div>
+
+        {/* Column 2: Details */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 justify-center">
+          {/* Name */}
+          <div className="w-24 h-4 bg-gray-200 rounded-md" />
+          {/* Follow Button */}
+          <div className="w-12 h-3 bg-gray-100 rounded-md mt-0.5" />
+          {/* Skills */}
+          <div className="w-36 h-3 bg-gray-200 rounded-md mt-1" />
+          <div className="w-20 h-3 bg-gray-100 rounded-md mt-0.5" />
+          {/* Experience */}
+          <div className="w-24 h-2.5 bg-gray-200 rounded-md mt-1" />
+        </div>
+
+      </div>
+
+      {/* Column 3: Price & Buttons */}
+      <div className="flex flex-col gap-1.5 justify-center items-center flex-shrink-0 ml-auto">
+        {/* Price */}
+        <div className="w-10 h-3 bg-gray-200 rounded-md mb-1" />
+        {/* Audio Button */}
+        <div className="w-[82px] h-[36px] rounded-[12px] bg-gray-200" />
+        {/* Video Button */}
+        <div className="w-[82px] h-[36px] rounded-[12px] bg-gray-100" />
+      </div>
+    </div>
+  );
+}
+
 function Call() {
   const [astrologers, setAstrologers] = useState([]);
   const [allAstrologers, setAllAstrologers] = useState([]);
@@ -221,9 +262,10 @@ function Call() {
           {/* 4. Astrologers list */}
           <div className="px-5 mt-4 space-y-4">
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <span className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></span>
-                <span className="text-sm text-gray-500 font-medium">Finding online astrologers...</span>
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <SkeletonCard key={i} />
+                ))}
               </div>
             ) : astrologers.length === 0 ? (
               <div className="text-center py-20 text-gray-500 text-sm">

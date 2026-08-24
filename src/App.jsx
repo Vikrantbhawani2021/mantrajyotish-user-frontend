@@ -148,6 +148,30 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/call/:sessionId"
+          element={
+            <ProtectedRoute featureName="Call Session">
+              <CallSession />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/video/:sessionId"
+          element={
+            <ProtectedRoute featureName="Call Session">
+              <CallSession />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat/:sessionId"
+          element={
+            <ProtectedRoute featureName="Chat Session">
+              <ChatSession />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Public Routes */}
         <Route path="/chat" element={<Chat />} />

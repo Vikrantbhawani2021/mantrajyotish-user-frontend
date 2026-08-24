@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import AgoraRTC from "agora-rtc-sdk-ng";
 AgoraRTC.setLogLevel(3); // 3 = ERROR level only, silences debug/info spam
@@ -9,23 +9,32 @@ import { BACKEND_URL } from "../config/backend";
 import { getBalance } from "../api/wallet";
 import { endVideoSession, rateVideoSession, callRate } from "../api/video";
 import { sendMessage as sendChatApi, getHistory as getChatHistoryApi, uploadImage } from "../api/chat";
+import { apiFetch } from "../api/client";
 
 export default function CallSession() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { sessionId: routeSessionId } = useParams();
   const { isLoggedIn, triggerLoginModal } = useAuth();
 
-  // Retrieve params passed via route state
-  const { astrologer, callType: initialCallType, sessionId, channelName: initialChannelName } = location.state || {};
+  const stateData = location.state || {};
+  const sessionId = stateData.sessionId || routeSessionId;
 
+  const [astrologer, setAstrologer] = useState(() => stateData.astrologer || null);
   const userObj = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = userObj._id || userObj.id || "";
 
   // Call states: PENDING, ACTIVE, COMPLETED, REJECTED, MISSED, CANCELLED
   const [sessionStatus, setSessionStatus] = useState("PENDING");
-  const [callType, setCallType] = useState(() => String(initialCallType || "AUDIO").toUpperCase());
-  const [channelName, setChannelName] = useState(initialChannelName || "");
-  const [ratePerMinute, setRatePerMinute] = useState(astrologer?.priceRaw || 9);
+  const [callType, setCallType] = useState(() => String(stateData.callType || "AUDIO").toUpperCase());
+  const [channelName, setChannelName] = useState(stateData.channelName || "");
+  const [ratePerMinute, setRatePerMinute] = useState(() => astrologer?.priceRaw || 9);
+
+  useEffect(() => {
+    if (astrologer?.priceRaw) {
+      setRatePerMinute(astrologer.priceRaw);
+    }
+  }, [astrologer]);
   // Non-blocking in-screen toast (replaces all browser alert() calls)
   const [toastMessage, setToastMessage] = useState(null); // { text, type: 'info'|'warn'|'error' }
   const [showInCallChat, setShowInCallChat] = useState(false);
@@ -167,6 +176,7 @@ export default function CallSession() {
   const [selectedSpeaker, setSelectedSpeaker] = useState("");
   const [volumeBoost, setVolumeBoost] = useState(100);
   const [showSettings, setShowSettings] = useState(false);
+  const [isBillingPaused, setIsBillingPaused] = useState(false);
 
   // Refs for Agora RTC
   const clientRef = useRef(null);
@@ -380,6 +390,19 @@ export default function CallSession() {
       }
     });
 
+    socket.on("billing_paused", () => {
+      setIsBillingPaused(true);
+    });
+
+    socket.on("billing_resumed", (data) => {
+      setIsBillingPaused(false);
+      if (data && data.remainingBalance !== undefined) {
+        const safeBal = Number(data.remainingBalance) || 0;
+        setRemainingBalance(safeBal);
+        localStorage.setItem("wallet_balance", safeBal.toFixed(2));
+      }
+    });
+
     // Peer media state updates
     const handlePeerMediaState = (data) => {
       console.log("Peer media state changed:", data);
@@ -504,6 +527,38 @@ export default function CallSession() {
       fetchDevices();
     }
   }, [sessionStatus]);
+
+  // If direct link load, fetch session from backend
+  useEffect(() => {
+    if (!stateData.sessionId && routeSessionId) {
+      apiFetch(`/api/calls/${routeSessionId}`)
+        .then(res => {
+          const session = res.session || res.data || res;
+          if (session) {
+            if (session.astrologer) {
+              setAstrologer(session.astrologer);
+            }
+            if (session.callType) {
+              setCallType(session.callType);
+            }
+            if (session.channelName) {
+              setChannelName(session.channelName);
+            }
+            if (session.status === "ACTIVE") {
+              setSessionStatus("ACTIVE");
+              const appID = session.agora?.appId || session.appId || session.agora?.appID;
+              const channel = session.channelName || session.agora?.channelName || `call_${sessionId}`;
+              const rtcToken = session.agora?.token || session.token || session.rtcToken;
+              initAgora(appID, channel, rtcToken, session.callType || "AUDIO");
+            }
+          }
+        })
+        .catch(err => {
+          console.error("Failed to load secure call room:", err);
+          alert("Could not load secure call room: unauthorized or invalid link");
+        });
+    }
+  }, [routeSessionId]);
 
   // Agora SDK Integration logic
   const initAgora = async (appId, channelName, rtcToken, mode) => {
@@ -737,6 +792,18 @@ export default function CallSession() {
     }
   };
 
+  const handleRechargeWallet = () => {
+    // Emit pause to the backend instantly so the user is not billed during payment
+    socketRef.current?.emit("pause_session_billing", { sessionId });
+    
+    // Open recharge gateway in new tab
+    window.open("/wallet?recharge=true", "_blank");
+  };
+
+  const handleResumeCallBilling = () => {
+    socketRef.current?.emit("resume_session_billing", { sessionId });
+  };
+
   // Rate call session
   const handleRateSession = async (e) => {
     e.preventDefault();
@@ -825,6 +892,26 @@ export default function CallSession() {
     return (
       <div className="h-screen h-[100dvh] w-full max-w-[430px] bg-slate-950 flex flex-col justify-between items-center relative overflow-hidden text-white mx-auto shadow-2xl">
         
+        {isBillingPaused && (
+          <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-[60] flex flex-col items-center justify-center p-6 text-center text-white pointer-events-auto">
+            <div className="w-16 h-16 bg-[#FF6F3D]/10 text-[#FF6F3D] rounded-full flex items-center justify-center mb-4 border border-[#FF6F3D]/25 animate-pulse">
+              <Clock size={32} />
+            </div>
+            <h3 className="text-xl font-extrabold text-white">Call Session Paused</h3>
+            <p className="text-gray-400 text-xs mt-2 max-w-[280px]">
+              Billing has been paused because you are recharging your wallet. 
+              Please resume the call once your payment is complete.
+            </p>
+            
+            <button
+              onClick={handleResumeCallBilling}
+              className="mt-6 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              Resume Call & Billing
+            </button>
+          </div>
+        )}
+        
         {/* ✅ Non-blocking in-screen notification banner */}
         {toastMessage && (
           <div
@@ -859,7 +946,7 @@ export default function CallSession() {
               </div>
             </div>
             <button
-              onClick={() => navigate("/deposit")}
+              onClick={handleRechargeWallet}
               className="bg-[#FF6F3D] hover:bg-[#e05e30] text-white text-[10px] font-black px-3 py-1.5 rounded-xl active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-0.5"
             >
               <Plus size={8} strokeWidth={3} /> Add Money
@@ -884,7 +971,7 @@ export default function CallSession() {
                     Bal: ₹{remainingBalance.toFixed(2)}
                   </span>
                   <button
-                    onClick={() => navigate("/deposit")}
+                    onClick={handleRechargeWallet}
                     className="w-4 h-4 bg-[#FF6F3D] hover:bg-[#e05e30] text-white flex items-center justify-center rounded-full cursor-pointer shadow-xs transition-transform hover:scale-105 active:scale-95 flex-shrink-0"
                   >
                     <Plus size={9} strokeWidth={3} />

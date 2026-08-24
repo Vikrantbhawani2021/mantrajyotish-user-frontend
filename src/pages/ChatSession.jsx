@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
 import { BACKEND_URL } from "../config/backend";
 import { endChat, rateChat, initiateChat, sendMessage, getHistory, getSessionsForUser } from "../api/chat";
+import { apiFetch } from "../api/client";
 
 const CakeIcon = () => (
   <svg className="w-6 h-6 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -29,11 +30,11 @@ const formatDobToLong = (dobStr) => {
 
 export default function ChatSession() {
   const navigate = useNavigate();
-  const { name } = useParams();
+  const { name, sessionId: routeSessionId } = useParams();
   const location = useLocation();
   const { isLoggedIn, triggerLoginModal } = useAuth();
 
-  const astrologer = location.state?.astrologer || {
+  const [astrologer, setAstrologer] = useState(() => location.state?.astrologer || {
     id: "65b839cd49b29e00192e01a4",
     name: name || "Vikram",
     price: "₹9/min",
@@ -42,12 +43,34 @@ export default function ChatSession() {
     skill: "Vedic Astrology, Kundli, Tarot Reading",
     exp: "8 Years",
     rating: "4.9",
-  };
+  });
 
-  const [currentSessionId, setCurrentSessionId] = useState(location.state?.sessionId || null);
+  const [currentSessionId, setCurrentSessionId] = useState(location.state?.sessionId || routeSessionId || null);
   const sessionId = currentSessionId;
   const userObj = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = userObj._id || userObj.id || "";
+
+  useEffect(() => {
+    if (!location.state?.sessionId && routeSessionId) {
+      apiFetch(`/api/chats/details/${routeSessionId}`)
+        .then(res => {
+          const session = res.session || res.data || res;
+          if (session) {
+            setCurrentSessionId(routeSessionId);
+            if (session.astrologer) {
+              setAstrologer(session.astrologer);
+            }
+            if (session.status) {
+              setSessionStatus(session.status);
+            }
+          }
+        })
+        .catch(err => {
+          console.error("Failed to load secure chat session details:", err);
+          alert("Could not load secure chat room: unauthorized or invalid link");
+        });
+    }
+  }, [routeSessionId]);
 
   const [messages, setMessages] = useState([]);
   const [customPopup, setCustomPopup] = useState(null); // { title, message, type, onConfirm }

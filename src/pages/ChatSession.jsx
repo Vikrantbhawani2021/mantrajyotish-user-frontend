@@ -677,6 +677,7 @@ export default function ChatSession() {
           targetSessionId = resData.data._id || resData.data.sessionId;
           setCurrentSessionId(targetSessionId);
           localStorage.setItem("active_chat_session", JSON.stringify({ name, sessionId: targetSessionId }));
+          navigate(`/chat/${targetSessionId}`, { replace: true });
         } else {
           showCustomPopup(
             resData?.message?.includes("offline") ? "Astrologer Offline" : "Request Failed", 

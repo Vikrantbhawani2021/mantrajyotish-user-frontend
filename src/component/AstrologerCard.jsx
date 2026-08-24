@@ -182,14 +182,16 @@ function AstrologerCard({ item }) {
       }
 
       // Navigate to active call session screen only on success
-      navigate("/call-session", {
+      const sId = resData.data?._id || resData.data?.sessionId;
+      const pathType = String(type).toUpperCase() === "VIDEO" ? "video" : "call";
+      navigate(`/${pathType}/${sId}`, {
         state: {
           astrologer: {
             ...data,
             priceRaw: priceCleaned
           },
           callType: type,
-          sessionId: resData.data?._id || resData.data?.sessionId,
+          sessionId: sId,
           channelName: resData.data?.channelName || `call_${resData.data?._id}`,
           isMock: false
         }

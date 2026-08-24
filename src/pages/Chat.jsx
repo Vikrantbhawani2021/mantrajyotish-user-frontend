@@ -6,6 +6,7 @@ import Bottomnav from "../component/Bottomnav";
 import { useAuth } from "../context/AuthContext";
 import { BACKEND_URL } from "../config/backend";
 import { initiateChat } from "../api/chat";
+import { getBalance } from "../api/wallet";
 import CategoryTabs from "../component/CategoryTabs";
 import InsufficientBalanceModal from "../component/InsufficientBalanceModal";
 import { io } from "socket.io-client";
@@ -271,6 +272,25 @@ export default function Chat() {
     // Re-fetch listing every 20 seconds for real-time status updates
     const interval = setInterval(fetchOnlineAstrologers, 20000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const fetchBalanceOnMount = async () => {
+      try {
+        const token = localStorage.getItem("authToken");
+        if (!token) return;
+        const userObj = JSON.parse(localStorage.getItem("user") || "{}");
+        const uid = userObj._id || userObj.id || userObj.userId || "";
+        if (!uid) return;
+        const query = `userId=${uid}`;
+        const res = await getBalance(query);
+        const bal = res?.data?.walletBalance ?? res?.data?.balance ?? 0;
+        localStorage.setItem("wallet_balance", Number(bal).toFixed(2));
+      } catch (err) {
+        console.warn("Failed to background fetch wallet balance in Chat:", err);
+      }
+    };
+    fetchBalanceOnMount();
   }, []);
 
   // Listen for real-time status change broadcast from socket

@@ -143,10 +143,10 @@ function AstrologerCard({ item }) {
     setLoadingCall(type);
 
     try {
-      // Step 1: Ensure user has sufficient balance to connect call
-      let currentBalance = await getWalletBalance();
-      if (currentBalance < priceCleaned) {
-        setRechargeModal({ rate: priceCleaned, currentBalance });
+      // Optimistic balance check using cached balance
+      const cachedBal = parseFloat(localStorage.getItem("wallet_balance") || "0");
+      if (cachedBal < priceCleaned) {
+        setRechargeModal({ rate: priceCleaned, currentBalance: cachedBal });
         setLoadingCall(null);
         return;
       }
@@ -163,14 +163,21 @@ function AstrologerCard({ item }) {
 
       try {
         // Use API helper to request video session
-        resData = await requestVideoSession({ userId, astrologerId: astroId, callType: type, walletBalance: currentBalance });
+        resData = await requestVideoSession({ userId, astrologerId: astroId, callType: type, walletBalance: cachedBal });
 
         if (!resData || !resData.success) {
-          showCustomPopup(
-            resData?.message?.includes("offline") ? "Astrologer Offline" : "Request Failed", 
-            resData?.message || "Failed to initiate call. Please try again.", 
-            "error"
-          );
+          const lowerMsg = (resData?.message || "").toLowerCase();
+          if (lowerMsg.includes("balance") || lowerMsg.includes("fund") || lowerMsg.includes("insufficient")) {
+            // Actual wallet balance was lower than required
+            const freshBal = await getWalletBalance(); // Fetch fresh in background to update local UI
+            setRechargeModal({ rate: priceCleaned, currentBalance: freshBal });
+          } else {
+            showCustomPopup(
+              resData?.message?.includes("offline") ? "Astrologer Offline" : "Request Failed", 
+              resData?.message || "Failed to initiate call. Please try again.", 
+              "error"
+            );
+          }
           setLoadingCall(null);
           return;
         }

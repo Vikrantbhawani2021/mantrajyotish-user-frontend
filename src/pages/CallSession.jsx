@@ -627,38 +627,48 @@ export default function CallSession() {
         handleEndCall();
       });
 
-      // Join the channel — pass null for mock/empty tokens (enables Agora App-ID-only test mode)
-      const resolvedToken = (rtcToken && !String(rtcToken).startsWith("mock_")) ? rtcToken : null;
-      await client.join(appId, channelName, resolvedToken, null);
-
-      // Create local tracks and publish
+      // STEP 1: Request mic/camera permissions FIRST — before joining Agora.
+      // The browser shows the permission dialog when getUserMedia is triggered
+      // inside createMicrophoneAudioTrack / createMicrophoneAndCameraTracks.
+      // If we call client.join() first, the prompt appears AFTER network
+      // handshake (appearing "late") or gets silently suppressed by browsers.
+      console.log("🎤 Requesting media permissions for " + mode + " call...");
       if (mode === "VIDEO") {
         try {
           const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
             {},
-            {
-              facingMode: "user"
-            }
+            { facingMode: "user" }
           );
           localAudioTrackRef.current = audioTrack;
           localVideoTrackRef.current = videoTrack;
-
-          if (localVideoRef.current) {
-            videoTrack.play(localVideoRef.current);
-          }
-
-          await client.publish([audioTrack, videoTrack]);
+          console.log("📹 Camera & Mic tracks created — permissions granted.");
         } catch (videoErr) {
-          console.warn("⚠️ Camera/Mic error on video mode, falling back to audio only:", videoErr);
+          console.warn("⚠️ Camera/Mic error, falling back to audio-only:", videoErr);
           const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
           localAudioTrackRef.current = audioTrack;
-          await client.publish([audioTrack]);
+          localVideoTrackRef.current = null;
         }
       } else {
+        // Audio only — never requests camera permission
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         localAudioTrackRef.current = audioTrack;
+        localVideoTrackRef.current = null;
+        console.log("🎙️ Mic track created — mic permission granted.");
+      }
 
-        await client.publish([audioTrack]);
+      // STEP 2: Join Agora channel (network only, no permission needed)
+      const resolvedToken = (rtcToken && !String(rtcToken).startsWith("mock_")) ? rtcToken : null;
+      await client.join(appId, channelName, resolvedToken, null);
+      console.log("✅ Joined Agora channel:", channelName);
+
+      // STEP 3: Play local video + publish all tracks
+      if (localVideoTrackRef.current && localVideoRef.current) {
+        localVideoTrackRef.current.play(localVideoRef.current);
+      }
+      const tracksToPublish = [localAudioTrackRef.current, localVideoTrackRef.current].filter(Boolean);
+      if (tracksToPublish.length > 0) {
+        await client.publish(tracksToPublish);
+        console.log("📡 Published " + tracksToPublish.length + " local track(s) to channel.");
       }
 
       setSessionStatus("ACTIVE");

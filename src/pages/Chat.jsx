@@ -9,15 +9,16 @@ import { initiateChat } from "../api/chat";
 import { getBalance } from "../api/wallet";
 import CategoryTabs from "../component/CategoryTabs";
 import InsufficientBalanceModal from "../component/InsufficientBalanceModal";
+import AstrologerProfilePopup from "../component/AstrologerProfilePopup";
 import { io } from "socket.io-client";
 
 
-function ChatAstrologerCard({ item, isFollowed, toggleFollow, handleStartChat, loadingAstro }) {
+function ChatAstrologerCard({ item, isFollowed, toggleFollow, handleStartChat, loadingAstro, onProfileClick }) {
   const presenceStatus = useAstrologerPresence(item.id || item._id);
 
   return (
     <div
-      onClick={() => handleStartChat(item)}
+      onClick={onProfileClick}
       className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300 cursor-pointer"
     >
       {/* Column 1 & Column 2 Wrapper */}
@@ -209,6 +210,7 @@ export default function Chat() {
   const navigate = useNavigate();
   const { isLoggedIn, triggerLoginModal } = useAuth();
   const [loadingAstro, setLoadingAstro] = useState(null);
+  const [selectedAstrologer, setSelectedAstrologer] = useState(null);
   const [astrologers, setAstrologers] = useState([]);
   const [allAstrologers, setAllAstrologers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -242,6 +244,7 @@ export default function Chat() {
         const list = resData.data || (Array.isArray(resData) ? resData : []);
         if (response.ok && resData.success && list && list.length > 0) {
           const formatted = list.map(astro => ({
+            ...astro,
             id: astro._id || astro.id,
             name: astro.name || "Astrologer",
             isOnline: astro.isOnline ?? true,
@@ -251,7 +254,7 @@ export default function Chat() {
             rating: astro.rating ? String(astro.rating) : "4.8",
             price: "₹9/min",
             priceRaw: 9,
-            image: astro.profileImage || `https://i.pravatar.cc/200?img=${Math.floor(Math.random() * 70) + 1}`,
+            image: astro.profileImage || `https://i.pravatar.cc/200?img=${((astro._id || astro.id || "1").toString().split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 70) + 1}`,
           }));
           setAllAstrologers(formatted);
           setAstrologers(formatted);
@@ -488,6 +491,7 @@ export default function Chat() {
                   toggleFollow={toggleFollow}
                   handleStartChat={handleStartChat}
                   loadingAstro={loadingAstro}
+                  onProfileClick={() => setSelectedAstrologer(item)}
                 />
               ))
             )}
@@ -503,6 +507,14 @@ export default function Chat() {
 
         {/* Bottom Navigation */}
         <Bottomnav />
+
+        {/* Astrologer Profile Popup */}
+        {selectedAstrologer && (
+          <AstrologerProfilePopup
+            astrologer={selectedAstrologer}
+            onClose={() => setSelectedAstrologer(null)}
+          />
+        )}
 
       </div>
     </div>

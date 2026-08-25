@@ -3,6 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function Header() {
+  const getProfileImage = () => {
+    try {
+      const userObj = JSON.parse(localStorage.getItem("user") || "{}");
+      return userObj.profileImage || "https://randomuser.me/api/portraits/women/65.jpg";
+    } catch {
+      return "https://randomuser.me/api/portraits/women/65.jpg";
+    }
+  };
+
   const navigate = useNavigate();
   const { isLoggedIn, userName } = useAuth();
 
@@ -14,11 +23,12 @@ function Header() {
           <img
             src={
               isLoggedIn
-                ? "https://randomuser.me/api/portraits/women/65.jpg"
+                ? getProfileImage()
                 : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
             }
             alt="profile"
-            className="w-14 h-14 rounded-full object-cover border-2 border-white bg-white"
+            onError={(e) => { e.target.src = "https://cdn-icons-png.flaticon.com/512/149/149071.png"; }}
+            className="w-14 h-14 rounded-full object-cover border-2 border-white"
           />
 
           <div>

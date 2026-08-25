@@ -68,7 +68,7 @@ function RechargeModal({ astrologerName, rate, currentBalance, onClose, onRechar
   );
 }
 
-function AstrologerCard({ item }) {
+function AstrologerCard({ item, onProfileClick }) {
   const presenceStatus = useAstrologerPresence(item?.id || item?._id);
   const { isLoggedIn, triggerLoginModal } = useAuth();
   const navigate = useNavigate();
@@ -228,7 +228,10 @@ function AstrologerCard({ item }) {
         />
       )}
 
-      <div className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300">
+      <div 
+        onClick={onProfileClick}
+        className="bg-white rounded-[24px] shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-gray-100 p-3 flex justify-between gap-3 w-full hover:shadow-[0_10px_26px_rgba(0,0,0,0.05)] hover:scale-[1.01] transition-all duration-300 cursor-pointer"
+      >
 
         {/* Column 1 & Column 2 Wrapper */}
         <div className="flex gap-3 flex-1 min-w-0">
@@ -369,7 +372,10 @@ function AstrologerCard({ item }) {
 
           <button
             disabled={loadingCall !== null}
-            onClick={() => handleStartCall("AUDIO")}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleStartCall("AUDIO");
+            }}
             className="w-[82px] h-[36px] rounded-[12px] bg-[#EBF7EE] text-[#2EA248] hover:bg-[#d8eedc] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
           >
             <Phone size={11} className="fill-current" />
@@ -378,7 +384,10 @@ function AstrologerCard({ item }) {
 
           <button
             disabled={loadingCall !== null}
-            onClick={() => handleStartCall("VIDEO")}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleStartCall("VIDEO");
+            }}
             className="w-[82px] h-[36px] rounded-[12px] bg-[#FFF2EC] text-[#FF6F3D] hover:bg-[#ffe5d9] text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
           >
             <Video size={11} className="fill-current" />

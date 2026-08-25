@@ -887,7 +887,7 @@ export default function ChatSession() {
             <div className="flex items-center gap-2 max-w-[50%]">
               <div className="relative flex-shrink-0">
                 <img
-                  src={astrologer.image}
+                  src={astrologer.image || astrologer.profileImage || `https://i.pravatar.cc/200?img=${((astrologer._id || astrologer.id || "1").toString().split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 70) + 1}`}
                   alt={astrologer.name}
                   className="w-10 h-10 rounded-full object-cover border border-white/20"
                 />

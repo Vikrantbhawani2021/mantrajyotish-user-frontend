@@ -76,6 +76,7 @@ export default function EditProfile() {
   const navigate = useNavigate();
   const location = useLocation();
   const { updateUserName, userName, saveUser } = useAuth();
+  const fileInputRef = React.useRef(null);
 
   // Check if we are in onboarding mode
   const isOnboarding = location.search.includes("mode=onboarding");
@@ -93,9 +94,70 @@ export default function EditProfile() {
     state: "",
     country: "",
     address: "",
+    profileImage: "",
   });
 
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingImage(true);
+    const token = localStorage.getItem("authToken");
+    const uploadData = new FormData();
+    uploadData.append("file", file);
+
+    try {
+      // Step 1: Upload image to Cloudinary via backend
+      const res = await fetch(`${BACKEND_URL}/api/upload/image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: uploadData
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        const newImageUrl = data.url;
+
+        // Step 2: Update local form state with new image URL
+        setFormData((prev) => ({ ...prev, profileImage: newImageUrl }));
+
+        // Step 3: Immediately persist the new profile image URL to the database
+        try {
+          const saveRes = await fetch(`${BACKEND_URL}/api/user/profile`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ profileImage: newImageUrl })
+          });
+          const saveData = await saveRes.json();
+          if (saveRes.ok && saveData.success) {
+            const updatedUser = saveData.data?.user || saveData.data;
+            if (updatedUser) saveUser(updatedUser);
+            showPopup("Success", "Profile picture updated successfully!", "success");
+          } else {
+            // Image uploaded to Cloudinary but DB save failed — still show partial success
+            showPopup("Uploaded", "Image uploaded but could not save to profile. Please click Save.", "success");
+          }
+        } catch (saveErr) {
+          console.error("Profile image DB save error:", saveErr);
+          showPopup("Uploaded", "Image uploaded but could not save to profile. Please click Save.", "success");
+        }
+      } else {
+        showPopup("Upload Failed", data.message || "Failed to upload image", "error");
+      }
+    } catch (err) {
+      console.error("Image upload error:", err);
+      showPopup("Error", "An error occurred during file upload", "error");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   // Custom Popup Modal State
   const [popup, setPopup] = useState({
@@ -151,7 +213,7 @@ export default function EditProfile() {
           
           setFormData({
             name: u.name || "",
-            email: u.email || "",
+            email: (u.email && !u.email.endsWith("@kalpjoytish.com")) ? u.email : "",
             phone: u.phone || "",
             gender: u.gender ? (u.gender.charAt(0).toUpperCase() + u.gender.slice(1)) : "Select Gender",
             dob: displayDob,
@@ -161,6 +223,7 @@ export default function EditProfile() {
             state: u.state || "",
             country: u.country || "",
             address: u.address || "",
+            profileImage: u.profileImage || "",
           });
         }
       } catch (err) {
@@ -172,7 +235,7 @@ export default function EditProfile() {
             const u = JSON.parse(savedUserStr);
             setFormData({
               name: u.name || "",
-              email: u.email || "",
+              email: (u.email && !u.email.endsWith("@kalpjoytish.com")) ? u.email : "",
               phone: u.phone || "",
               gender: u.gender ? (u.gender.charAt(0).toUpperCase() + u.gender.slice(1)) : "Select Gender",
               dob: u.dob || "",
@@ -310,8 +373,7 @@ export default function EditProfile() {
               formattedDob = formData.dob;
             }
           }
-          const cleanPhone = phoneVal ? phoneVal.replace(/\D/g, "") : Math.random().toString(36).substring(7);
-          const userEmail = formData.email || `${cleanPhone}@kalpjoytish.com`;
+          const userEmail = formData.email ? formData.email.trim() : null;
 
           return JSON.stringify({
             name: formData.name,
@@ -323,7 +385,8 @@ export default function EditProfile() {
             state: formData.state,
             country: formData.country,
             address: formData.address,
-            email: userEmail
+            email: userEmail,
+            profileImage: formData.profileImage
           });
         })()
       });
@@ -394,6 +457,7 @@ export default function EditProfile() {
           state: formData.state,
           country: formData.country,
           address: formData.address,
+          profileImage: formData.profileImage,
         })
       });
 
@@ -803,13 +867,26 @@ export default function EditProfile() {
           <div className="-mt-14 flex justify-center">
             <div className="relative">
               <img
-                src="https://randomuser.me/api/portraits/women/44.jpg"
+                src={formData.profileImage || "https://randomuser.me/api/portraits/women/44.jpg"}
                 alt="profile"
+                onError={(e) => { e.target.src = "https://randomuser.me/api/portraits/women/44.jpg"; }}
                 className="w-28 h-28 rounded-full border-4 border-white shadow-lg object-cover"
               />
-              <button className="absolute bottom-0 right-0 bg-orange-500 p-2 rounded-full text-white shadow-md cursor-pointer">
+              <button 
+                type="button"
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={isUploadingImage}
+                className="absolute bottom-0 right-0 bg-orange-500 p-2 rounded-full text-white shadow-md cursor-pointer hover:bg-orange-600 transition-colors"
+              >
                 <Camera size={18} />
               </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageUpload} 
+                style={{ display: "none" }} 
+                accept="image/*" 
+              />
             </div>
           </div>
 

@@ -21,6 +21,7 @@ import Wallet from "./pages/Wallet";
 import Deposit from "./pages/Deposit";
 import TransactionHistory from "./pages/TransactionHistory";
 import ChatHistoryDetails from "./pages/ChatHistoryDetails";
+import Pooja from "./component/Pooja";
 
 function ProtectedRoute({ children, featureName }) {
   const { isLoggedIn, triggerLoginModal, justLoggedOut } = useAuth();
@@ -74,7 +75,7 @@ function AppContent() {
         <Route path="/home" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/otp" element={<Otp />} />
-        
+
         {/* Protected Routes */}
         <Route
           path="/profile"
@@ -116,6 +117,7 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+        <Route path="/pooja" element={<Pooja />} />
         <Route
           path="/wallet"
           element={

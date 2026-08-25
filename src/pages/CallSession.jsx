@@ -899,7 +899,7 @@ export default function CallSession() {
             <div className="absolute w-40 h-40 bg-orange-500/20 rounded-full animate-pulse duration-700"></div>
             <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-orange-500/40 relative z-10 shadow-2xl">
               <img
-                src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
+                src={astrologer?.image || astrologer?.profileImage || `https://i.pravatar.cc/200?img=${((astrologer?._id || astrologer?.id || "1").toString().split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 70) + 1}`}
                 alt={astrologer?.name}
                 className="w-full h-full object-cover"
               />
@@ -1143,7 +1143,7 @@ export default function CallSession() {
                   <div className="relative mb-2">
                     <div className="absolute -inset-2 bg-orange-500/20 rounded-full blur-lg animate-pulse"></div>
                     <img
-                      src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
+                      src={astrologer?.image || astrologer?.profileImage || `https://i.pravatar.cc/200?img=${((astrologer?._id || astrologer?.id || "1").toString().split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 70) + 1}`}
                       alt={astrologer?.name}
                       className={`${isSwapped ? "w-12 h-12" : "w-28 h-28"} rounded-full border border-orange-500/60 object-cover shadow-2xl relative z-10 transition-all`}
                     />
@@ -1232,7 +1232,7 @@ export default function CallSession() {
               <div className="relative w-40 h-40 bg-gradient-to-tr from-orange-500 to-[#FF6F3D] rounded-full p-1 flex items-center justify-center shadow-[0_0_50px_rgba(255,111,61,0.25)]">
                 <div className="w-full h-full rounded-full overflow-hidden border-2 border-slate-950">
                   <img
-                    src={astrologer?.image || "https://randomuser.me/api/portraits/women/65.jpg"}
+                    src={astrologer?.image || astrologer?.profileImage || `https://i.pravatar.cc/200?img=${((astrologer?._id || astrologer?.id || "1").toString().split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 70) + 1}`}
                     alt={astrologer?.name}
                     className="w-full h-full object-cover"
                   />

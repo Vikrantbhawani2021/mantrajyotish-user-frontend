@@ -1,32 +1,35 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import poojaImg from "../assets/pooja/ganesh-chaturthi.png";
 
 const services = [
   {
     title: "Chat",
     sub: "With Astrology Experts",
-    img: "https://randomuser.me/api/portraits/women/44.jpg",
+    img: "https://res.cloudinary.com/dwbhbwgz9/image/upload/f_auto,q_auto/v1/astro_male_pic_1",
     path: "/chat",
+    offer: true,
   },
   {
     title: "Call",
     sub: "1:1 Personal Guidance",
-    img: "https://randomuser.me/api/portraits/women/68.jpg",
+    img: "https://res.cloudinary.com/dwbhbwgz9/image/upload/f_auto,q_auto/v1/astro_male_pic_4",
     path: "/call",
+    offer: true,
   },
   {
-    
-  title: "Astro Info",
-  sub: "Astrology Readings",
-  img: "https://randomuser.me/api/portraits/men/64.jpg",
-  path: "/astro-history",
-
+    title: "Astro History",
+    sub: "Astrology Readings",
+    img: "https://res.cloudinary.com/dwbhbwgz9/image/upload/f_auto,q_auto/v1/astro_male_pic_5",
+    path: "/astro-history",
+    offer: false,
   },
   {
     title: "Pooja",
     sub: "Personalised Pooja",
-    img: "https://randomuser.me/api/portraits/women/25.jpg",
+    img: poojaImg,
     path: "/pooja",
+    offer: false,
   },
 ];
 
@@ -49,14 +52,19 @@ export default function ServiceGrid() {
           className="relative min-h-[96px] rounded-2xl bg-white/90 backdrop-blur-sm shadow-md hover:shadow-lg p-3.5 cursor-pointer active:scale-95 transition-all duration-200 border border-orange-100/50 flex flex-col justify-between"
         >
           {/* Top Row: Title & Offer Badge */}
+
           <div className="flex items-start justify-between pr-1">
             <h2 className="text-base font-bold text-[#1d2340] tracking-tight">
               {item.title}
             </h2>
-            <span className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-2 py-0.5 text-[9px] font-extrabold text-white shadow-sm shadow-orange-200">
-              50% OFF
-            </span>
+            {item.offer == true ?
+              <span className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-2 py-0.5 text-[9px] font-extrabold text-white shadow-sm shadow-orange-200">
+                50% OFF
+              </span>
+              : <div></div>}
           </div>
+
+
 
           {/* Bottom Row: Subtitle & Profile Image */}
           <div className="flex items-end justify-between mt-2">

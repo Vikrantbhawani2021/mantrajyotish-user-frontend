@@ -821,7 +821,7 @@ export default function CallSession() {
   const handleToggleSpeaker = () => {
     const nextState = !isSpeakerOn;
     setIsSpeakerOn(nextState);
-    const boostLevel = nextState ? 300 : 100; // 300% for Speakerphone, 100% for Normal Earpiece
+    const boostLevel = nextState ? 400 : (isMobileDevice ? 300 : 100); // 400% (max) for Speakerphone, 300% (on mobile) or 100% (on desktop) otherwise
     setVolumeBoost(boostLevel);
     if (remoteUser && remoteUser.audioTrack) {
       remoteUser.audioTrack.setVolume(boostLevel);
@@ -1295,20 +1295,18 @@ export default function CallSession() {
               <MessageSquare size={22} />
             </button>
 
-            {/* Replace Settings button with simple Speaker toggle - HIDDEN on mobile */}
-            {!isMobileDevice && (
-              <button
-                onClick={handleToggleSpeaker}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-xl cursor-pointer border ${
-                  isSpeakerOn 
-                    ? "bg-emerald-500 border-emerald-400 text-white shadow-emerald-500/30" 
-                    : "bg-white/10 hover:bg-white/20 text-white border border-white/20"
-                }`}
-                title={isSpeakerOn ? "Turn Speaker Off" : "Turn Speaker On"}
-              >
-                <Volume2 size={22} />
-              </button>
-            )}
+            {/* Replace Settings button with simple Speaker toggle */}
+            <button
+              onClick={handleToggleSpeaker}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-xl cursor-pointer border ${
+                isSpeakerOn 
+                  ? "bg-emerald-500 border-emerald-400 text-white shadow-emerald-500/30" 
+                  : "bg-white/10 hover:bg-white/20 text-white border border-white/20"
+              }`}
+              title={isSpeakerOn ? "Turn Speaker Off" : "Turn Speaker On"}
+            >
+              <Volume2 size={22} />
+            </button>
 
             {/* 4. End Call Button */}
             <button

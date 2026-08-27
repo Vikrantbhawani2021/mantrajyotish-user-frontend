@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Phone } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import logo from "../assets/logo.png";
+import logo from "../assets/logo.svg";
 import { BACKEND_URL } from "../config/backend";
 import { sendOtp, verifyOtp } from "../api/auth";
 

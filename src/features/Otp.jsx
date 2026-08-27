@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useRef, useState, useEffect } from "react";
-import logo from "../assets/logo.png";
+import logo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BACKEND_URL } from "../config/backend";
 import { verifyOtp, login as authLogin, sendOtp as sendOtpAPI } from "../api/auth";

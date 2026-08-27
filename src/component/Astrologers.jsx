@@ -1,6 +1,6 @@
 // src/components/Astrologers.jsx
 
-import profile from "../assets/logo.png"; // Apni image ka path yahan change kar sakte ho
+import profile from "../assets/logo.svg"; // Apni image ka path yahan change kar sakte ho
 
 const Astrologers = [
   {

@@ -420,7 +420,7 @@ export default function EditProfile() {
   };
 
   const handleSingleSave = async () => {
-    const validationError = validateProfileForm(formData, true);
+    const validationError = validateProfileForm(formData, false);
     if (validationError) {
       showPopup("Incomplete Details", validationError, "error");
       return;
@@ -597,6 +597,21 @@ export default function EditProfile() {
                     value={formData.name}
                     onChange={(e) => handleChange("name", e.target.value)}
                     placeholder="Enter your full name"
+                    className="w-full pl-12 pr-4 py-3.5 border border-orange-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400 text-base shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Email (Optional)</label>
+                <div className="relative flex items-center">
+                  <Mail size={20} className="text-[#ff7448] absolute left-4" />
+                  <input
+                    type="email"
+                    value={formData.email || ""}
+                    onChange={(e) => handleChange("email", e.target.value)}
+                    placeholder="Enter your email address"
                     className="w-full pl-12 pr-4 py-3.5 border border-orange-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400 text-base shadow-sm"
                   />
                 </div>

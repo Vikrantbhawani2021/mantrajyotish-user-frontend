@@ -68,45 +68,7 @@ function Login() {
     }
   };
 
-  const handleDevLogin = async () => {
-    setLoading(true);
-    try {
-      const devPhone = "+918979689005";
-      const data = await verifyOtp(devPhone, "123456");
-
-      if (data && data.success) {
-        localStorage.setItem("phone", devPhone);
-        if (data.data && data.data.token) {
-          localStorage.setItem("authToken", data.data.token);
-          if (data.data.refreshToken) {
-            localStorage.setItem("refreshToken", data.data.refreshToken);
-          }
-          if (data.data.user) {
-            saveUser(data.data.user);
-          }
-        }
-        
-        loginUser();
-        
-        const userObj = data.data?.user || {};
-        const hasProfile = userObj.isProfileCompleted || userObj.firstname || (userObj.name && userObj.name !== "Ravi Sharma" && userObj.name !== "Astro Client User");
-        
-        if (hasProfile) {
-          navigate("/home", { replace: true });
-        } else {
-          navigate("/editprofile?mode=onboarding", { state: { from: location.state?.from } });
-        }
-      } else {
-        alert(data?.message || "Developer login failed");
-      }
-    } catch (error) {
-      console.error("Dev Login Error:", error);
-      alert(`Dev Login Failed: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  
   return (
     <div className="h-screen bg-[#ff8253] flex flex-col justify-end overflow-hidden">
       {/* White Card */}
@@ -167,17 +129,7 @@ function Login() {
           </button>
         </div>
 
-        {/* Developer Login Bypass Button */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleDevLogin}
-            disabled={loading}
-            className="w-full max-w-md mt-3 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
-          >
-            🚀 Dev Quick Login (8979689005)
-          </button>
-        </div>
-
+        
         {/* Google Button */}
         <div className="flex justify-center">
           <button className="w-full max-w-md mt-5 border border-gray-300 py-4 rounded-xl text-[#5f82f5]">

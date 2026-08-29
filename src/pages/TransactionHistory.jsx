@@ -207,14 +207,14 @@ export default function TransactionHistory() {
   };
 
   // Format amount to include sign
-  const formatAmountText = (amount, iconType) => {
-    if (amount === undefined || amount === null) return "";
-    const amtStr = String(amount);
+  const formatAmountText = (tx) => {
+    if (!tx || tx.amount === undefined || tx.amount === null) return "";
+    const amtStr = String(tx.amount);
     const cleanAmt = amtStr.replace(/[+₹, ]/g, "");
     const parsed = parseFloat(cleanAmt);
     if (isNaN(parsed)) return amtStr;
 
-    if (iconType === "plus" || amtStr.startsWith("+") || parsed > 0) {
+    if (isDeposit(tx)) {
       return `+ ₹${parsed.toFixed(2)}`;
     }
     return `- ₹${Math.abs(parsed).toFixed(2)}`;
@@ -228,7 +228,10 @@ export default function TransactionHistory() {
       tx.iconType === "plus" || 
       titleLower.includes("added") || 
       titleLower.includes("recharge") || 
-      amtStr.startsWith("+")
+      titleLower.includes("reward") || 
+      titleLower.includes("refund") || 
+      amtStr.startsWith("+") ||
+      tx.type === "credit"
     );
   };
 
@@ -384,7 +387,7 @@ export default function TransactionHistory() {
                   <div className="bg-white rounded-3xl shadow-sm border border-gray-100/50 p-4 divide-y divide-gray-100/70">
                     {filteredTxs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((tx, idx) => {
                       const isCredit = isDeposit(tx);
-                      const formattedAmt = formatAmountText(tx.amount, tx.iconType);
+                      const formattedAmt = formatAmountText(tx);
                       return (
                         <div
                           key={tx.id || idx}
@@ -481,7 +484,7 @@ export default function TransactionHistory() {
                   )}
                 </div>
                 <h2 className="text-2xl font-black text-gray-800">
-                  {formatAmountText(selectedTx.amount, selectedTx.iconType)}
+                  {formatAmountText(selectedTx)}
                 </h2>
                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">{selectedTx.title}</p>
               </div>

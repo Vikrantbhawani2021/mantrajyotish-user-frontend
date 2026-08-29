@@ -76,19 +76,21 @@ export default function Wallet() {
       tx.iconType === "plus" || 
       titleLower.includes("added") || 
       titleLower.includes("recharge") || 
+      titleLower.includes("reward") || 
+      titleLower.includes("refund") || 
       amtStr.startsWith("+") ||
       tx.type === "credit"
     );
   };
 
-  const formatAmountText = (amount, iconType) => {
-    if (amount === undefined || amount === null) return "";
-    const amtStr = String(amount);
+  const formatAmountText = (tx) => {
+    if (!tx || tx.amount === undefined || tx.amount === null) return "";
+    const amtStr = String(tx.amount);
     const cleanAmt = amtStr.replace(/[+₹, ]/g, "");
     const parsed = parseFloat(cleanAmt);
     if (isNaN(parsed)) return amtStr;
 
-    if (iconType === "plus" || amtStr.startsWith("+") || parsed > 0) {
+    if (isDeposit(tx)) {
       return `+ ₹${parsed.toFixed(2)}`;
     }
     return `- ₹${Math.abs(parsed).toFixed(2)}`;
@@ -432,7 +434,7 @@ export default function Wallet() {
                   )}
                 </div>
                 <h2 className="text-2xl font-black text-gray-800">
-                  {formatAmountText(selectedTx.amount, selectedTx.iconType)}
+                  {formatAmountText(selectedTx)}
                 </h2>
                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">
                   {selectedTx.title || (isDeposit(selectedTx) ? "Added Money" : "Consultation Session")}
